@@ -393,6 +393,7 @@ export default function Chatbot() {
       return distA - distB;
     });
 
+    // If user query has positive score matches, return them
     if (results.length > 0) {
       return {
         cityFound: refCity,
@@ -400,22 +401,29 @@ export default function Chatbot() {
       };
     }
 
-    const fallbackCityNgos = scoredList.filter(n => (n.city || '').toLowerCase().includes(refCity.toLowerCase()));
-    if (fallbackCityNgos.length > 0) {
-      return {
-        cityFound: refCity,
-        items: fallbackCityNgos.slice(0, 3)
-      };
-    }
-
+    // Do NOT return cards for conversational queries/greetings with 0 matchScore
     return {
-      cityFound: 'India',
-      items: scoredList.slice(0, 3)
+      cityFound: refCity,
+      items: []
     };
   };
 
   const generateBotReply = (userQuery) => {
     const q = (userQuery || '').toLowerCase().trim();
+
+    // Check for conversational greetings
+    const isGreeting = q === 'hi' || q === 'hello' || q === 'hey' || q === 'how are you' || q === 'how r u' || q === 'who are you' || q.startsWith('good morning') || q.startsWith('good evening');
+    if (isGreeting) {
+      return {
+        text: selectedLanguage === 'hi'
+          ? "नमस्ते! मैं ब्रिजअप एआई (BridgeUp AI) हूँ। मैं मुंबई, नवी मुंबई, दिल्ली, बेंगलुरु और कोलकाता में सत्यापित एनजीओ से जुड़ा हुआ हूँ। मैं आपकी क्या मदद कर सकता हूँ?"
+          : selectedLanguage === 'mr'
+          ? "नमस्कार! मी ब्रिजअप एआय (BridgeUp AI) आहे. मी मुंबई, नवी मुंबई, दिल्ली, बंगळुरू आणि कोलकाता मधील सत्यापित स्वयंसेवी संस्थांशी जोडलेला आहे. मी आपली कशी मदत करू शकेन?"
+          : "Hello! I am doing well, thank you for asking. I am **BridgeUp AI**, your dedicated humanitarian assistant. How can I assist you with finding NGOs, reporting emergencies, or donating today?",
+        ngoCards: [],
+        action: null
+      };
+    }
 
     if (q.includes('how to report') || q.includes('report incident') || q.includes('distress ticket')) {
       return {
