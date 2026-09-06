@@ -545,24 +545,48 @@ export default function Chatbot() {
               <div className="flex gap-1.5">
                 <input
                   type="password"
-                  placeholder="Paste AIzaSy... API key"
+                  placeholder="Paste your Gemini API key"
                   value={geminiApiKey}
                   onChange={(e) => setGeminiApiKey(e.target.value)}
                   className="flex-1 px-3 py-1.5 rounded-xl bg-slate-900 border border-brand-teal-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-brand-mint-400"
                 />
                 <button
                   type="button"
-                  onClick={() => {
-                    localStorage.setItem('bridgeup_gemini_key', geminiApiKey.trim());
-                    setShowKeyModal(false);
+                  onClick={async () => {
+                    const trimmed = geminiApiKey.trim();
+                    localStorage.setItem('bridgeup_gemini_key', trimmed);
+                    if (!trimmed) {
+                      alert('Please paste an API key first.');
+                      return;
+                    }
+                    try {
+                      // Test the key live
+                      const testRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${trimmed}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          contents: [{ role: 'user', parts: [{ text: 'Hello! Reply in 3 words.' }] }]
+                        })
+                      });
+                      const testData = await testRes.json();
+                      if (testRes.ok && testData.candidates?.[0]?.content?.parts?.[0]?.text) {
+                        alert(`✅ Success! Connected to Gemini AI:\n"${testData.candidates[0].content.parts[0].text.trim()}"`);
+                        setShowKeyModal(false);
+                      } else {
+                        const errMsg = testData.error?.message || JSON.stringify(testData);
+                        alert(`❌ API Key Rejected by Google:\n${errMsg}\n\nNote: Make sure your key is generated from Google AI Studio (aistudio.google.com/app/apikey).`);
+                      }
+                    } catch (err) {
+                      alert(`Network Error testing key: ${err.message}`);
+                    }
                   }}
                   className="px-3 py-1.5 rounded-xl bg-brand-mint-500 hover:bg-brand-mint-400 text-slate-950 font-black text-xs transition-colors"
                 >
-                  Save Key
+                  Save & Test
                 </button>
               </div>
               <p className="text-[10px] text-slate-400 leading-tight">
-                Your key is stored securely in local browser storage for client-side queries.
+                Click <strong>Save & Test</strong> to verify connection with Google's Gemini servers.
               </p>
             </div>
           )}

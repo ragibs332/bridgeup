@@ -29,36 +29,68 @@ export async function getGeminiClient() {
 
 /**
  * Generate intelligent humanitarian and NGO guidance using Gemini AI
+ * Uses @google/genai SDK with automatic REST fallback and multi-model support
  */
 export async function generateGeminiResponse(userPrompt, availableNgos = []) {
-  try {
-    const ai = await getGeminiClient();
-    if (!ai) return null;
+  const apiKey = geminiConfig.apiKey || localStorage.getItem('bridgeup_gemini_key');
+  if (!apiKey) return null;
 
-    // Create a concise prompt context with registered NGO details
-    const ngoSummary = availableNgos.slice(0, 15).map(n => 
-      `- ${n.name} (${n.city}, ${n.location}): ${n.focusArea}. Needs: ${n.urgentNeeds?.map(u => u.item).join(', ') || 'General funding'}. Phone: ${n.phone}`
-    ).join('\n');
+  // Create a concise prompt context with registered NGO details
+  const ngoSummary = availableNgos.slice(0, 15).map(n => 
+    `- ${n.name} (${n.city}, ${n.location}): ${n.focusArea}. Needs: ${n.urgentNeeds?.map(u => u.item).join(', ') || 'General funding'}. Phone: ${n.phone}`
+  ).join('\n');
 
-    const systemPrompt = `You are BridgeUp AI, an intelligent humanitarian civic assistant in India. 
+  const systemPrompt = `You are BridgeUp AI, an intelligent humanitarian civic assistant in India. 
 Your purpose is to connect citizens with verified NGOs for hunger relief, child welfare, elder care, animal rescues, medical assistance (cancer/hospice), and emergency disaster response.
 Available Verified NGOs in database:
 ${ngoSummary}
 
 Answer concisely in friendly markdown. If the user is looking for an NGO, highlight the matching NGOs and what items they need.`;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: [
-        { role: 'user', parts: [{ text: `${systemPrompt}\n\nUser Question: ${userPrompt}` }] }
-      ]
-    });
+  // 1. Try Direct Gemini REST Endpoint (Ultra-fast and universal for all key formats)
+  const modelsToTry = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-2.5-flash'];
+  
+  for (const model of modelsToTry) {
+    try {
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey.trim()}`;
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: `${systemPrompt}\n\nUser Question: ${userPrompt}` }]
+            }
+          ]
+        })
+      });
 
-    if (response && response.text) {
-      return response.text;
+      if (res.ok) {
+        const data = await res.json();
+        const candidate = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (candidate) return candidate;
+      }
+    } catch (err) {
+      console.warn(`REST call to ${model} failed, trying next:`, err);
     }
-  } catch (error) {
-    console.warn('Gemini AI inference error:', error);
   }
+
+  // 2. Try SDK Fallback
+  try {
+    const ai = await getGeminiClient();
+    if (ai) {
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [
+          { role: 'user', parts: [{ text: `${systemPrompt}\n\nUser Question: ${userPrompt}` }] }
+        ]
+      });
+      if (response && response.text) return response.text;
+    }
+  } catch (sdkErr) {
+    console.warn('Gemini SDK call fallback:', sdkErr);
+  }
+
   return null;
 }
