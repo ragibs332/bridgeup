@@ -47,15 +47,26 @@ ${ngoSummary}
 
 Answer concisely in friendly markdown. If the user is looking for an NGO, highlight the matching NGOs and what items they need.`;
 
-  // 1. Try Direct Gemini REST Endpoint (Ultra-fast and universal for all key formats)
+  // 1. Try Direct Gemini REST Endpoint with both header and query param for AQ/AIza keys
   const modelsToTry = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-2.5-flash'];
+  const trimmedKey = apiKey.trim();
   
   for (const model of modelsToTry) {
     try {
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey.trim()}`;
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(trimmedKey)}`;
+      const headers = { 
+        'Content-Type': 'application/json',
+        'x-goog-api-key': trimmedKey
+      };
+      
+      // If key starts with AQ., also attach as Bearer authorization token
+      if (trimmedKey.startsWith('AQ.')) {
+        headers['Authorization'] = `Bearer ${trimmedKey}`;
+      }
+
       const res = await fetch(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: headers,
         body: JSON.stringify({
           contents: [
             {

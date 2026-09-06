@@ -565,9 +565,17 @@ export default function Chatbot() {
 
                     setKeyTestState({ testing: true, status: 'testing', message: 'Contacting Google Gemini API...' });
                     try {
-                      const testRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${trimmed}`, {
+                      const headers = {
+                        'Content-Type': 'application/json',
+                        'x-goog-api-key': trimmed
+                      };
+                      if (trimmed.startsWith('AQ.')) {
+                        headers['Authorization'] = `Bearer ${trimmed}`;
+                      }
+
+                      const testRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(trimmed)}`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: headers,
                         body: JSON.stringify({
                           contents: [{ role: 'user', parts: [{ text: 'Respond with: "BridgeUp Connected"' }] }]
                         })
@@ -577,7 +585,7 @@ export default function Chatbot() {
                         const reply = testData.candidates[0].content.parts[0].text.trim();
                         setKeyTestState({ testing: false, status: 'success', message: `Connected! AI Reply: "${reply}"` });
                       } else {
-                        const errMsg = testData.error?.message || 'Invalid Key format or Google API permissions not enabled.';
+                        const errMsg = testData.error?.message || JSON.stringify(testData);
                         setKeyTestState({ testing: false, status: 'error', message: errMsg });
                       }
                     } catch (err) {
