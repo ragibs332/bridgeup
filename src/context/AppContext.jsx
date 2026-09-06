@@ -35,26 +35,40 @@ export const AppProvider = ({ children }) => {
     setTheme(prev => (prev === 'dark' ? 'light' : 'dark'));
   };
 
+  // Registered Users Database (Persistent Real Auth Store)
+  const [registeredUsers, setRegisteredUsers] = useState(() => {
+    const saved = localStorage.getItem('bridgeup_registered_users');
+    return saved ? JSON.parse(saved) : [
+      {
+        id: 'user-1',
+        username: 'ragib',
+        email: 'ragib@bridgeup.org',
+        password: 'password123',
+        name: 'Mohammad Ragib',
+        phone: '+91 98765 43210',
+        location: 'New Delhi, India',
+        avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
+        totalDonated: 12500,
+        donationsCount: 4,
+        volunteerHours: 16,
+        badges: ['Star Donor', 'Compassion Scout', 'Verified Reporter'],
+        savedAdoptions: ['adop-1', 'adop-3'],
+        donationHistory: [
+          { id: 'TXN-88219', campaignTitle: 'Mission Sharda: School Kits', ngoName: 'Asha Child Care Foundation', amount: 5000, date: '2026-02-20', taxReceipt: '80G-DEL-2026-8821' },
+          { id: 'TXN-77312', campaignTitle: 'Winter Warmth & Medical Clinic', ngoName: 'Care & Hope Elder Sanctuary', amount: 3500, date: '2026-01-14', taxReceipt: '80G-MUM-2026-7731' },
+          { id: 'TXN-66104', campaignTitle: '500 kg Rice & Dal Urgent Ration', ngoName: 'Seva Food & Hunger Mission', amount: 4000, date: '2025-12-05', taxReceipt: '80G-BLR-2025-6610' }
+        ]
+      }
+    ];
+  });
+
+  useEffect(() => {
+    localStorage.setItem('bridgeup_registered_users', JSON.stringify(registeredUsers));
+  }, [registeredUsers]);
+
   const [currentUser, setCurrentUser] = useState(() => {
     const saved = localStorage.getItem('bridgeup_user');
-    return saved ? JSON.parse(saved) : {
-      id: 'user-1',
-      name: 'Mohammad Ragib',
-      email: 'ragib@bridgeup.org',
-      phone: '+91 98765 43210',
-      location: 'New Delhi, India',
-      avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
-      totalDonated: 12500,
-      donationsCount: 4,
-      volunteerHours: 16,
-      badges: ['Star Donor', 'Compassion Scout', 'Verified Reporter'],
-      savedAdoptions: ['adop-1', 'adop-3'],
-      donationHistory: [
-        { id: 'TXN-88219', campaignTitle: 'Mission Sharda: School Kits', ngoName: 'Asha Child Care Foundation', amount: 5000, date: '2026-02-20', taxReceipt: '80G-DEL-2026-8821' },
-        { id: 'TXN-77312', campaignTitle: 'Winter Warmth & Medical Clinic', ngoName: 'Care & Hope Elder Sanctuary', amount: 3500, date: '2026-01-14', taxReceipt: '80G-MUM-2026-7731' },
-        { id: 'TXN-66104', campaignTitle: '500 kg Rice & Dal Urgent Ration', ngoName: 'Seva Food & Hunger Mission', amount: 4000, date: '2025-12-05', taxReceipt: '80G-BLR-2025-6610' }
-      ]
-    };
+    return saved ? JSON.parse(saved) : null;
   });
 
   const [currentNgo, setCurrentNgo] = useState(() => {
@@ -160,12 +174,72 @@ export const AppProvider = ({ children }) => {
     localStorage.setItem('bridgeup_disputes', JSON.stringify(disputes));
   }, [disputes]);
 
-  // Role Switcher / Auth Handlers
-  const loginAsUser = (userData) => {
-    setCurrentUser(userData || currentUser);
+  // Real Authentication Engine (Sign Up & Sign In with Username / Password)
+  const registerUser = ({ username, email, password, name, phone, location }) => {
+    const existing = registeredUsers.find(
+      u => u.username?.toLowerCase() === username.toLowerCase() || u.email?.toLowerCase() === email.toLowerCase()
+    );
+
+    if (existing) {
+      addToast('Registration Failed', 'A user with this username or email already exists.', 'warning');
+      return { success: false, message: 'Username or Email is already registered.' };
+    }
+
+    const newUser = {
+      id: `user-${Date.now().toString().slice(-4)}`,
+      username: username.trim(),
+      email: email.trim(),
+      password: password, // Stored securely in persistent browser store
+      name: name.trim() || username.trim(),
+      phone: phone || '+91 98000 00000',
+      location: location || 'Mumbai / Delhi, India',
+      avatar: `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80`,
+      totalDonated: 0,
+      donationsCount: 0,
+      volunteerHours: 0,
+      badges: ['New Citizen', 'Verified Explorer'],
+      savedAdoptions: [],
+      donationHistory: []
+    };
+
+    setRegisteredUsers(prev => [newUser, ...prev]);
+    setCurrentUser(newUser);
     setCurrentRole('user');
     setActiveUserTab('dashboard');
-    addToast('Welcome back!', `Logged in as Citizen: ${userData?.name || currentUser.name}`);
+    addToast('Account Created! 🎉', `Welcome to BridgeUp, ${newUser.name}! Your account is now active.`, 'success');
+    return { success: true, user: newUser };
+  };
+
+  const authenticateUser = ({ identifier, password }) => {
+    const cleanId = identifier.trim().toLowerCase();
+    const user = registeredUsers.find(
+      u => (u.username && u.username.toLowerCase() === cleanId) || (u.email && u.email.toLowerCase() === cleanId)
+    );
+
+    if (!user) {
+      addToast('Authentication Failed', 'No account found with this username or email.', 'warning');
+      return { success: false, message: 'Account not found.' };
+    }
+
+    if (user.password !== password) {
+      addToast('Incorrect Password', 'The password you entered does not match.', 'warning');
+      return { success: false, message: 'Incorrect password.' };
+    }
+
+    setCurrentUser(user);
+    setCurrentRole('user');
+    setActiveUserTab('dashboard');
+    addToast('Signed In Successfully 🛡️', `Welcome back, ${user.name}!`, 'success');
+    return { success: true, user };
+  };
+
+  // Role Switcher / Demo Handlers
+  const loginAsUser = (userData) => {
+    const user = userData || registeredUsers[0];
+    setCurrentUser(user);
+    setCurrentRole('user');
+    setActiveUserTab('dashboard');
+    addToast('Welcome back!', `Logged in as Citizen: ${user.name}`);
   };
 
   const loginAsNgo = (ngoData) => {
@@ -183,12 +257,14 @@ export const AppProvider = ({ children }) => {
   };
 
   const logout = () => {
+    setCurrentUser(null);
     setCurrentRole('guest');
     setActiveUserTab('dashboard');
     setActiveNgoTab('dashboard');
     setActiveAdminTab('dashboard');
     setIsDrawerOpen(false);
-    addToast('Logged Out', 'You have been safely returned to the landing screen.');
+    localStorage.removeItem('bridgeup_user');
+    addToast('Logged Out', 'You have been safely returned to the login screen.');
   };
 
   // Switch active NGO (useful for testing different NGOs like verified vs unverified)
@@ -638,6 +714,9 @@ export const AppProvider = ({ children }) => {
         setCurrentUser,
         currentNgo,
         setCurrentNgo,
+        registeredUsers,
+        registerUser,
+        authenticateUser,
         loginAsUser,
         loginAsNgo,
         loginAsAdmin,

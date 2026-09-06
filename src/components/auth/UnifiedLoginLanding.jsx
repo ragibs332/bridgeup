@@ -14,7 +14,12 @@ import {
   EyeOff,
   CheckCircle2,
   HeartHandshake,
-  ShieldAlert
+  ShieldAlert,
+  UserPlus,
+  LogIn,
+  KeyRound,
+  Phone,
+  MapPin
 } from 'lucide-react';
 
 export default function UnifiedLoginLanding() {
@@ -22,59 +27,97 @@ export default function UnifiedLoginLanding() {
     loginAsUser,
     loginAsNgo,
     loginAsAdmin,
+    registeredUsers,
+    registerUser,
+    authenticateUser,
     ngos,
     currentNgo
   } = useApp();
 
   const [selectedRole, setSelectedRole] = useState('user'); // 'user' | 'ngo' | 'admin'
-  const [isSignUp, setIsSignUp] = useState(false);
+  const [authMode, setAuthMode] = useState('login'); // 'login' | 'signup'
   const [showPassword, setShowPassword] = useState(false);
+  const [authError, setAuthError] = useState('');
 
   // Form states
-  const [formData, setFormData] = useState({
-    name: 'Mohammad Ragib',
-    email: 'ragib@bridgeup.org',
+  const [loginForm, setLoginForm] = useState({
+    identifier: 'ragib', // Username or Email
     password: 'password123',
     selectedNgoId: ngos[0]?.id || '',
-    ngoName: 'Asha Child Care Foundation',
     adminPasskey: 'admin2026'
+  });
+
+  const [signupForm, setSignupForm] = useState({
+    username: '',
+    email: '',
+    password: '',
+    confirmPassword: '',
+    name: '',
+    phone: '',
+    location: 'Mumbai, India'
   });
 
   const handleRoleChange = (role) => {
     setSelectedRole(role);
+    setAuthError('');
     if (role === 'user') {
-      setFormData(prev => ({ ...prev, email: 'ragib@bridgeup.org', name: 'Mohammad Ragib' }));
+      setLoginForm(prev => ({ ...prev, identifier: 'ragib', password: 'password123' }));
     } else if (role === 'ngo') {
-      setFormData(prev => ({ ...prev, email: 'contact@ashachildcare.org' }));
+      setLoginForm(prev => ({ ...prev, identifier: 'contact@ashachildcare.org', password: 'password123' }));
     } else if (role === 'admin') {
-      setFormData(prev => ({ ...prev, email: 'superadmin@bridgeup.org' }));
+      setLoginForm(prev => ({ ...prev, identifier: 'superadmin@bridgeup.org', adminPasskey: 'admin2026' }));
     }
   };
 
-  const handleStandardSubmit = (e) => {
+  const handleLoginSubmit = (e) => {
     e.preventDefault();
+    setAuthError('');
+
     if (selectedRole === 'user') {
-      loginAsUser({
-        id: 'user-1',
-        name: formData.name || 'Mohammad Ragib',
-        email: formData.email || 'ragib@bridgeup.org',
-        phone: '+91 98765 43210',
-        location: 'New Delhi, India',
-        avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
-        totalDonated: 12500,
-        donationsCount: 4,
-        volunteerHours: 16,
-        badges: ['Star Donor', 'Compassion Scout', 'Verified Reporter'],
-        savedAdoptions: ['adop-1', 'adop-3'],
-        donationHistory: [
-          { id: 'TXN-88219', campaignTitle: 'Mission Sharda: School Kits', ngoName: 'Asha Child Care Foundation', amount: 5000, date: '2026-02-20', taxReceipt: '80G-DEL-2026-8821' }
-        ]
+      const result = authenticateUser({
+        identifier: loginForm.identifier,
+        password: loginForm.password
       });
+      if (!result.success) {
+        setAuthError(result.message);
+      }
     } else if (selectedRole === 'ngo') {
-      const targetNgo = ngos.find(n => n.id === formData.selectedNgoId) || currentNgo || ngos[0];
+      const targetNgo = ngos.find(n => n.id === loginForm.selectedNgoId) || currentNgo || ngos[0];
       loginAsNgo(targetNgo);
     } else if (selectedRole === 'admin') {
-      loginAsAdmin();
+      if (loginForm.adminPasskey.trim() === 'admin2026' || loginForm.adminPasskey.trim() === 'admin') {
+        loginAsAdmin();
+      } else {
+        setAuthError('Invalid Admin Master Passkey. Use demo key: admin2026');
+      }
+    }
+  };
+
+  const handleSignupSubmit = (e) => {
+    e.preventDefault();
+    setAuthError('');
+
+    if (signupForm.password.length < 6) {
+      setAuthError('Password must be at least 6 characters long.');
+      return;
+    }
+
+    if (signupForm.password !== signupForm.confirmPassword) {
+      setAuthError('Passwords do not match.');
+      return;
+    }
+
+    const result = registerUser({
+      username: signupForm.username,
+      email: signupForm.email,
+      password: signupForm.password,
+      name: signupForm.name || signupForm.username,
+      phone: signupForm.phone,
+      location: signupForm.location
+    });
+
+    if (!result.success) {
+      setAuthError(result.message);
     }
   };
 
@@ -97,16 +140,15 @@ export default function UnifiedLoginLanding() {
       <main className="flex-1 flex items-center justify-center p-4 sm:p-6 lg:p-8">
         <div className="w-full max-w-4xl grid grid-cols-1 lg:grid-cols-12 bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
           
-          {/* Left Column: Brand & Value Proposition Banner */}
+          {/* Left Column: Brand & 1-Click Preset Bar */}
           <div className="lg:col-span-5 bg-gradient-to-br from-brand-teal-900 via-brand-teal-800 to-brand-teal-950 text-white p-6 sm:p-8 flex flex-col justify-between relative overflow-hidden">
-            {/* Ambient visual orbs */}
             <div className="absolute top-0 right-0 w-64 h-64 bg-brand-mint-400/10 rounded-full blur-3xl pointer-events-none"></div>
             <div className="absolute bottom-0 left-0 w-64 h-64 bg-brand-amber-500/10 rounded-full blur-3xl pointer-events-none"></div>
 
             <div className="space-y-4 relative z-10">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/20 text-brand-mint-300 text-xs font-bold">
                 <Sparkles className="w-3.5 h-3.5 text-brand-amber-400" />
-                <span>Unified Civic & Social Good</span>
+                <span>Verified Humanitarian Network</span>
               </div>
 
               <h1 className="text-2xl sm:text-3xl font-black leading-tight tracking-tight">
@@ -114,7 +156,7 @@ export default function UnifiedLoginLanding() {
               </h1>
 
               <p className="text-xs sm:text-sm text-slate-200 leading-relaxed">
-                Connect directly with verified NGOs across India for emergency distress dispatch, 80G tax donations, and child/elder adoptions.
+                A unified platform connecting compassionate citizens, verified NGOs, and platform governance for emergency distress dispatch, 80G tax donations, and child/elder adoptions.
               </p>
             </div>
 
@@ -122,10 +164,10 @@ export default function UnifiedLoginLanding() {
             <div className="mt-6 pt-6 border-t border-white/15 space-y-3 relative z-10">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-extrabold uppercase tracking-wider text-brand-mint-300">
-                  ⚡ 1-Click Demo Login
+                  ⚡ 1-Click Quick Demo Access
                 </span>
                 <span className="text-[10px] bg-brand-amber-500/30 text-amber-200 px-2 py-0.5 rounded-full border border-brand-amber-400/30 font-bold">
-                  No Password Required
+                  Preset Access
                 </span>
               </div>
 
@@ -163,13 +205,13 @@ export default function UnifiedLoginLanding() {
             </div>
           </div>
 
-          {/* Right Column: Interactive Login Form */}
+          {/* Right Column: Real Authentication Form (Sign In / Sign Up) */}
           <div className="lg:col-span-7 p-6 sm:p-8 flex flex-col justify-between">
             <div>
               {/* Role Selection Tabs */}
-              <div className="mb-6">
+              <div className="mb-5">
                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">
-                  Select Login Role:
+                  Select Portal Role:
                 </label>
                 <div className="grid grid-cols-3 gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl">
                   <button
@@ -213,113 +255,249 @@ export default function UnifiedLoginLanding() {
                 </div>
               </div>
 
-              {/* Login Form */}
-              <form onSubmit={handleStandardSubmit} className="space-y-4">
-                {/* Role Specific Notice */}
-                {selectedRole === 'user' && (
-                  <div className="p-3 rounded-xl bg-brand-teal-50 dark:bg-brand-teal-950/40 border border-brand-teal-200 dark:border-brand-teal-800 text-xs text-brand-teal-900 dark:text-brand-mint-300 flex items-center gap-2">
-                    <HeartHandshake className="w-4 h-4 text-brand-teal-600 flex-shrink-0" />
-                    <span>Citizen Portal: Report distress, track resolutions & claim 80G tax receipts.</span>
-                  </div>
-                )}
+              {/* Mode Switcher for Citizen: Sign In vs Create Account */}
+              {selectedRole === 'user' && (
+                <div className="flex border-b border-slate-200 dark:border-slate-700 mb-4">
+                  <button
+                    type="button"
+                    onClick={() => { setAuthMode('login'); setAuthError(''); }}
+                    className={`flex-1 py-2.5 text-xs font-bold flex items-center justify-center gap-1.5 transition-all border-b-2 ${
+                      authMode === 'login'
+                        ? 'border-brand-teal-800 text-brand-teal-800 dark:text-brand-mint-300 dark:border-brand-mint-400'
+                        : 'border-transparent text-slate-500 hover:text-slate-900'
+                    }`}
+                  >
+                    <LogIn className="w-3.5 h-3.5" />
+                    <span>Sign In</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setAuthMode('signup'); setAuthError(''); }}
+                    className={`flex-1 py-2.5 text-xs font-bold flex items-center justify-center gap-1.5 transition-all border-b-2 ${
+                      authMode === 'signup'
+                        ? 'border-brand-teal-800 text-brand-teal-800 dark:text-brand-mint-300 dark:border-brand-mint-400'
+                        : 'border-transparent text-slate-500 hover:text-slate-900'
+                    }`}
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    <span>Create New Account</span>
+                  </button>
+                </div>
+              )}
 
-                {selectedRole === 'ngo' && (
-                  <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-900 dark:text-emerald-300 flex items-center gap-2">
-                    <Building2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                    <span>NGO Workspace: Solve dispatched local distress incidents and publish urgent needs.</span>
-                  </div>
-                )}
+              {/* Error Banner */}
+              {authError && (
+                <div className="mb-4 p-3 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900 text-red-700 dark:text-red-300 text-xs flex items-center gap-2">
+                  <ShieldAlert className="w-4 h-4 flex-shrink-0 text-red-500" />
+                  <span>{authError}</span>
+                </div>
+              )}
 
-                {selectedRole === 'admin' && (
-                  <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-200 flex items-center gap-2">
-                    <ShieldAlert className="w-4 h-4 text-brand-amber-600 flex-shrink-0" />
-                    <span>Super Admin Governance: Review statutory 80G/12A legal documents and moderate feeds.</span>
-                  </div>
-                )}
+              {/* SIGN UP FORM (Create Username & Password) */}
+              {selectedRole === 'user' && authMode === 'signup' ? (
+                <form onSubmit={handleSignupSubmit} className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1">
+                        Choose Username *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. mohammad_ragib"
+                        value={signupForm.username}
+                        onChange={(e) => setSignupForm({ ...signupForm, username: e.target.value })}
+                        className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs focus:ring-2 focus:ring-brand-teal-600 focus:outline-none text-slate-900 dark:text-white"
+                      />
+                    </div>
 
-                {/* If NGO role, allow instant selection of any registered NGO organization */}
-                {selectedRole === 'ngo' && (
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1">
+                        Full Name *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. Mohammad Ragib"
+                        value={signupForm.name}
+                        onChange={(e) => setSignupForm({ ...signupForm, name: e.target.value })}
+                        className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs focus:ring-2 focus:ring-brand-teal-600 focus:outline-none text-slate-900 dark:text-white"
+                      />
+                    </div>
+                  </div>
+
                   <div>
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1">
-                      Select Registered Organization
+                      Email Address *
                     </label>
-                    <select
-                      value={formData.selectedNgoId}
-                      onChange={(e) => setFormData({ ...formData, selectedNgoId: e.target.value })}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                    >
-                      {ngos.map(n => (
-                        <option key={n.id} value={n.id}>
-                          {n.name} ({n.city} - {n.verificationStatus.toUpperCase()})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                {/* Email / Username */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1">
-                    {selectedRole === 'admin' ? 'Super Admin ID / Email' : 'Email Address'}
-                  </label>
-                  <div className="relative">
-                    <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
                     <input
                       type="email"
                       required
-                      value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      placeholder="user@bridgeup.org"
-                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs focus:ring-2 focus:ring-brand-teal-600 focus:outline-none"
+                      placeholder="citizen@example.com"
+                      value={signupForm.email}
+                      onChange={(e) => setSignupForm({ ...signupForm, email: e.target.value })}
+                      className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs focus:ring-2 focus:ring-brand-teal-600 focus:outline-none text-slate-900 dark:text-white"
                     />
                   </div>
-                </div>
 
-                {/* Password / Passkey */}
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-200">
-                      {selectedRole === 'admin' ? 'Admin Master Passkey' : 'Password'}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1">
+                        Create Password *
+                      </label>
+                      <input
+                        type="password"
+                        required
+                        placeholder="Min 6 characters"
+                        value={signupForm.password}
+                        onChange={(e) => setSignupForm({ ...signupForm, password: e.target.value })}
+                        className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs focus:ring-2 focus:ring-brand-teal-600 focus:outline-none text-slate-900 dark:text-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1">
+                        Confirm Password *
+                      </label>
+                      <input
+                        type="password"
+                        required
+                        placeholder="Re-enter password"
+                        value={signupForm.confirmPassword}
+                        onChange={(e) => setSignupForm({ ...signupForm, confirmPassword: e.target.value })}
+                        className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs focus:ring-2 focus:ring-brand-teal-600 focus:outline-none text-slate-900 dark:text-white"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full py-2.5 rounded-xl bg-brand-teal-800 hover:bg-brand-teal-700 text-white font-extrabold text-xs shadow-md transition-all flex items-center justify-center gap-2 mt-2"
+                  >
+                    <UserPlus className="w-4 h-4" />
+                    <span>Create Citizen Account & Enter</span>
+                  </button>
+                </form>
+              ) : (
+                /* SIGN IN FORM (Login with Username / Password) */
+                <form onSubmit={handleLoginSubmit} className="space-y-4">
+                  {/* Role Guidance Notification */}
+                  {selectedRole === 'user' && (
+                    <div className="p-3 rounded-xl bg-brand-teal-50 dark:bg-brand-teal-950/40 border border-brand-teal-200 dark:border-brand-teal-800 text-xs text-brand-teal-900 dark:text-brand-mint-300 flex items-center gap-2">
+                      <HeartHandshake className="w-4 h-4 text-brand-teal-600 flex-shrink-0" />
+                      <span>Citizen Portal: Report distress, track resolutions & claim 80G tax receipts.</span>
+                    </div>
+                  )}
+
+                  {selectedRole === 'ngo' && (
+                    <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-900 dark:text-emerald-300 flex items-center gap-2">
+                      <Building2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                      <span>NGO Workspace: Solve dispatched local distress incidents and publish urgent needs.</span>
+                    </div>
+                  )}
+
+                  {selectedRole === 'admin' && (
+                    <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-200 flex items-center gap-2">
+                      <ShieldAlert className="w-4 h-4 text-brand-amber-600 flex-shrink-0" />
+                      <span>Super Admin Governance: Review statutory 80G/12A legal documents and moderate feeds.</span>
+                    </div>
+                  )}
+
+                  {/* NGO Organization Selection */}
+                  {selectedRole === 'ngo' && (
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1">
+                        Select Registered Organization
+                      </label>
+                      <select
+                        value={loginForm.selectedNgoId}
+                        onChange={(e) => setLoginForm({ ...loginForm, selectedNgoId: e.target.value })}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                      >
+                        {ngos.map(n => (
+                          <option key={n.id} value={n.id}>
+                            {n.name} ({n.city} - {n.verificationStatus.toUpperCase()})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Username or Email Input */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1">
+                      {selectedRole === 'admin' ? 'Admin Username / Email' : 'Username or Email Address'}
                     </label>
-                    <span className="text-[11px] text-brand-teal-700 dark:text-brand-mint-400 cursor-pointer hover:underline">
-                      Forgot Password?
-                    </span>
+                    <div className="relative">
+                      <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                      <input
+                        type="text"
+                        required
+                        value={loginForm.identifier}
+                        onChange={(e) => setLoginForm({ ...loginForm, identifier: e.target.value })}
+                        placeholder="Enter username or email"
+                        className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs focus:ring-2 focus:ring-brand-teal-600 focus:outline-none"
+                      />
+                    </div>
                   </div>
-                  <div className="relative">
-                    <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      required
-                      value={formData.password}
-                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                      placeholder="••••••••"
-                      className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs focus:ring-2 focus:ring-brand-teal-600 focus:outline-none"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3.5 top-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
 
-                {/* Submit Button */}
-                <button
-                  type="submit"
-                  className={`w-full py-3 rounded-xl text-white font-extrabold text-xs sm:text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 mt-2 ${
-                    selectedRole === 'admin'
-                      ? 'bg-brand-amber-600 hover:bg-brand-amber-500'
-                      : selectedRole === 'ngo'
-                      ? 'bg-emerald-700 hover:bg-emerald-600'
-                      : 'bg-brand-teal-800 hover:bg-brand-teal-700'
-                  }`}
-                >
-                  <span>Sign In as {selectedRole.toUpperCase()}</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              </form>
+                  {/* Password Input */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-200">
+                        {selectedRole === 'admin' ? 'Master Admin Passkey' : 'Password'}
+                      </label>
+                      {selectedRole === 'user' && (
+                        <span
+                          onClick={() => setAuthMode('signup')}
+                          className="text-[11px] text-brand-teal-700 dark:text-brand-mint-400 cursor-pointer hover:underline"
+                        >
+                          New user? Register
+                        </span>
+                      )}
+                    </div>
+                    <div className="relative">
+                      <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        required
+                        value={selectedRole === 'admin' ? loginForm.adminPasskey : loginForm.password}
+                        onChange={(e) => {
+                          if (selectedRole === 'admin') {
+                            setLoginForm({ ...loginForm, adminPasskey: e.target.value });
+                          } else {
+                            setLoginForm({ ...loginForm, password: e.target.value });
+                          }
+                        }}
+                        placeholder="••••••••"
+                        className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs focus:ring-2 focus:ring-brand-teal-600 focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3.5 top-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Submit Button */}
+                  <button
+                    type="submit"
+                    className={`w-full py-3 rounded-xl text-white font-extrabold text-xs sm:text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 mt-2 ${
+                      selectedRole === 'admin'
+                        ? 'bg-brand-amber-600 hover:bg-brand-amber-500'
+                        : selectedRole === 'ngo'
+                        ? 'bg-emerald-700 hover:bg-emerald-600'
+                        : 'bg-brand-teal-800 hover:bg-brand-teal-700'
+                    }`}
+                  >
+                    <span>Sign In as {selectedRole.toUpperCase()}</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </form>
+              )}
             </div>
 
             {/* Quick Demo Switcher Shortcut */}
