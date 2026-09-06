@@ -565,17 +565,12 @@ export default function Chatbot() {
 
                     setKeyTestState({ testing: true, status: 'testing', message: 'Contacting Google Gemini API...' });
                     try {
-                      const headers = {
-                        'Content-Type': 'application/json',
-                        'x-goog-api-key': trimmed
-                      };
-                      if (trimmed.startsWith('AQ.')) {
-                        headers['Authorization'] = `Bearer ${trimmed}`;
-                      }
-
-                      const testRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${encodeURIComponent(trimmed)}`, {
+                      const testRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent`, {
                         method: 'POST',
-                        headers: headers,
+                        headers: {
+                          'Content-Type': 'application/json',
+                          'x-goog-api-key': trimmed
+                        },
                         body: JSON.stringify({
                           contents: [{ parts: [{ text: 'Respond with: "BridgeUp Connected"' }] }]
                         })

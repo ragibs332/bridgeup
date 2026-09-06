@@ -58,15 +58,12 @@ Answer concisely in friendly markdown. If the user is looking for an NGO, highli
   
   for (const model of modelsToTry) {
     try {
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(trimmedKey)}`;
+      // Use clean header authentication without query param collision
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
       const headers = { 
         'Content-Type': 'application/json',
         'x-goog-api-key': trimmedKey
       };
-      
-      if (trimmedKey.startsWith('AQ.')) {
-        headers['Authorization'] = `Bearer ${trimmedKey}`;
-      }
 
       const res = await fetch(endpoint, {
         method: 'POST',
