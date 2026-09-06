@@ -47,8 +47,13 @@ ${ngoSummary}
 
 Answer concisely in friendly markdown. If the user is looking for an NGO, highlight the matching NGOs and what items they need.`;
 
-  // 1. Try Direct Gemini REST Endpoint with both header and query param for AQ/AIza keys
-  const modelsToTry = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-2.5-flash'];
+  // 1. Try Direct Gemini REST Endpoint with Google's latest active models (gemini-3.5-flash, gemini-3.5-flash-lite, gemini-flash-latest)
+  const modelsToTry = [
+    'gemini-3.5-flash',
+    'gemini-3.5-flash-lite',
+    'gemini-flash-latest',
+    'gemini-2.5-flash'
+  ];
   const trimmedKey = apiKey.trim();
   
   for (const model of modelsToTry) {
@@ -59,7 +64,6 @@ Answer concisely in friendly markdown. If the user is looking for an NGO, highli
         'x-goog-api-key': trimmedKey
       };
       
-      // If key starts with AQ., also attach as Bearer authorization token
       if (trimmedKey.startsWith('AQ.')) {
         headers['Authorization'] = `Bearer ${trimmedKey}`;
       }
@@ -70,7 +74,6 @@ Answer concisely in friendly markdown. If the user is looking for an NGO, highli
         body: JSON.stringify({
           contents: [
             {
-              role: 'user',
               parts: [{ text: `${systemPrompt}\n\nUser Question: ${userPrompt}` }]
             }
           ]

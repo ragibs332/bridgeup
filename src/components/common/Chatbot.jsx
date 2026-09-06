@@ -573,11 +573,11 @@ export default function Chatbot() {
                         headers['Authorization'] = `Bearer ${trimmed}`;
                       }
 
-                      const testRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(trimmed)}`, {
+                      const testRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${encodeURIComponent(trimmed)}`, {
                         method: 'POST',
                         headers: headers,
                         body: JSON.stringify({
-                          contents: [{ role: 'user', parts: [{ text: 'Respond with: "BridgeUp Connected"' }] }]
+                          contents: [{ parts: [{ text: 'Respond with: "BridgeUp Connected"' }] }]
                         })
                       });
                       const testData = await testRes.json();
