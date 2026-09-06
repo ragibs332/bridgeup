@@ -45,6 +45,7 @@ export default function Chatbot() {
   const [isTyping, setIsTyping] = useState(false);
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [geminiApiKey, setGeminiApiKey] = useState(() => localStorage.getItem('bridgeup_gemini_key') || '');
+  const [keyTestState, setKeyTestState] = useState({ testing: false, status: null, message: '' });
   const messagesEndRef = useRef(null);
 
   const [messages, setMessages] = useState([
@@ -532,61 +533,83 @@ export default function Chatbot() {
 
           {/* Gemini API Key Configuration Banner */}
           {showKeyModal && (
-            <div className="p-3.5 bg-brand-teal-950 text-white border-b border-brand-teal-800 space-y-2 animate-in fade-in">
+            <div className="p-3.5 bg-brand-teal-950 text-white border-b border-brand-teal-800 space-y-2.5 animate-in fade-in">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-bold text-brand-mint-300 flex items-center gap-1.5">
                   <KeyRound className="w-3.5 h-3.5 text-brand-amber-400" />
-                  Live Google Gemini API Key
+                  Google Gemini API Key Setup
                 </span>
                 <span className="text-[9px] bg-brand-mint-500/20 text-brand-mint-300 px-2 py-0.5 rounded-full font-bold">
-                  Gemini 2.5 Flash
+                  Gemini 2.5 Flash / 1.5
                 </span>
               </div>
+
               <div className="flex gap-1.5">
                 <input
-                  type="password"
-                  placeholder="Paste your Gemini API key"
+                  type="text"
+                  placeholder="Paste your Gemini API key here"
                   value={geminiApiKey}
                   onChange={(e) => setGeminiApiKey(e.target.value)}
                   className="flex-1 px-3 py-1.5 rounded-xl bg-slate-900 border border-brand-teal-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-brand-mint-400"
                 />
                 <button
                   type="button"
+                  disabled={keyTestState.testing}
                   onClick={async () => {
                     const trimmed = geminiApiKey.trim();
                     localStorage.setItem('bridgeup_gemini_key', trimmed);
                     if (!trimmed) {
-                      alert('Please paste an API key first.');
+                      setKeyTestState({ testing: false, status: 'error', message: 'Please enter an API key.' });
                       return;
                     }
+
+                    setKeyTestState({ testing: true, status: 'testing', message: 'Contacting Google Gemini API...' });
                     try {
-                      // Test the key live
                       const testRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${trimmed}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                          contents: [{ role: 'user', parts: [{ text: 'Hello! Reply in 3 words.' }] }]
+                          contents: [{ role: 'user', parts: [{ text: 'Respond with: "BridgeUp Connected"' }] }]
                         })
                       });
                       const testData = await testRes.json();
                       if (testRes.ok && testData.candidates?.[0]?.content?.parts?.[0]?.text) {
-                        alert(`✅ Success! Connected to Gemini AI:\n"${testData.candidates[0].content.parts[0].text.trim()}"`);
-                        setShowKeyModal(false);
+                        const reply = testData.candidates[0].content.parts[0].text.trim();
+                        setKeyTestState({ testing: false, status: 'success', message: `Connected! AI Reply: "${reply}"` });
                       } else {
-                        const errMsg = testData.error?.message || JSON.stringify(testData);
-                        alert(`❌ API Key Rejected by Google:\n${errMsg}\n\nNote: Make sure your key is generated from Google AI Studio (aistudio.google.com/app/apikey).`);
+                        const errMsg = testData.error?.message || 'Invalid Key format or Google API permissions not enabled.';
+                        setKeyTestState({ testing: false, status: 'error', message: errMsg });
                       }
                     } catch (err) {
-                      alert(`Network Error testing key: ${err.message}`);
+                      setKeyTestState({ testing: false, status: 'error', message: `Network request error: ${err.message}` });
                     }
                   }}
-                  className="px-3 py-1.5 rounded-xl bg-brand-mint-500 hover:bg-brand-mint-400 text-slate-950 font-black text-xs transition-colors"
+                  className="px-3 py-1.5 rounded-xl bg-brand-mint-500 hover:bg-brand-mint-400 disabled:opacity-50 text-slate-950 font-black text-xs transition-colors flex items-center gap-1"
                 >
-                  Save & Test
+                  {keyTestState.testing ? 'Testing...' : 'Test & Save'}
                 </button>
               </div>
+
+              {/* In-UI Status Box */}
+              {keyTestState.status && (
+                <div className={`p-2.5 rounded-xl text-xs flex items-start gap-2 ${
+                  keyTestState.status === 'success'
+                    ? 'bg-emerald-950/80 border border-emerald-500/60 text-emerald-200'
+                    : keyTestState.status === 'testing'
+                    ? 'bg-blue-950/80 border border-blue-500/60 text-blue-200'
+                    : 'bg-red-950/80 border border-red-500/60 text-red-200'
+                }`}>
+                  <span className="text-sm flex-shrink-0">
+                    {keyTestState.status === 'success' ? '✅' : keyTestState.status === 'testing' ? '⏳' : '❌'}
+                  </span>
+                  <p className="text-[11px] leading-relaxed break-words font-medium">
+                    {keyTestState.message}
+                  </p>
+                </div>
+              )}
+
               <p className="text-[10px] text-slate-400 leading-tight">
-                Click <strong>Save & Test</strong> to verify connection with Google's Gemini servers.
+                Stored in your browser local storage. Click <strong>Test & Save</strong> to run a live test.
               </p>
             </div>
           )}
