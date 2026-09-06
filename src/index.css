@@ -1,0 +1,109 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  color-scheme: light;
+}
+
+:root.dark {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #f8fafc;
+  color: #0f172a;
+  overflow-x: hidden;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.dark body {
+  background-color: #030712;
+  color: #f8fafc;
+}
+
+/* Custom modern scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: #0f172a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+.glass-panel {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.dark .glass-panel {
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(51, 65, 85, 0.5);
+}
+
+.glass-dark {
+  background: rgba(13, 92, 91, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(72, 201, 176, 0.2);
+}
+
+.gradient-brand {
+  background: linear-gradient(135deg, #0d5c5b 0%, #083e3d 60%, #042424 100%);
+}
+
+.gradient-mint {
+  background: linear-gradient(135deg, #48c9b0 0%, #2dd4bf 100%);
+}
+
+.gradient-amber {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+}
+
+.gradient-hero {
+  background: radial-gradient(circle at top right, rgba(72, 201, 176, 0.15), transparent 40%),
+              radial-gradient(circle at bottom left, rgba(245, 158, 11, 0.1), transparent 40%),
+              #f8fafc;
+}
+
+.dark .gradient-hero {
+  background: radial-gradient(circle at top right, rgba(72, 201, 176, 0.12), transparent 45%),
+              radial-gradient(circle at bottom left, rgba(245, 158, 11, 0.08), transparent 45%),
+              #030712;
+}
+
+/* Smooth badge glow */
+.badge-verified {
+  box-shadow: 0 0 10px rgba(72, 201, 176, 0.35);
+}
