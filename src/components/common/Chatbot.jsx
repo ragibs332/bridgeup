@@ -23,7 +23,16 @@ import {
   Filter,
   CheckCircle2,
   KeyRound,
-  Settings
+  Settings,
+  Mic,
+  MicOff,
+  Volume2,
+  Globe,
+  Image as ImageIcon,
+  Camera,
+  AlertOctagon,
+  VolumeX,
+  UploadCloud
 } from 'lucide-react';
 
 export default function Chatbot() {
@@ -31,12 +40,14 @@ export default function Chatbot() {
     currentRole,
     ngos,
     requirements,
+    reportIncident,
     setActiveUserTab,
     setActiveNgoTab,
     setActiveAdminTab,
     loginAsUser,
     loginAsNgo,
-    loginAsAdmin
+    loginAsAdmin,
+    addToast
   } = useApp();
 
   const [isOpen, setIsOpen] = useState(false);
@@ -46,13 +57,27 @@ export default function Chatbot() {
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [geminiApiKey, setGeminiApiKey] = useState(() => localStorage.getItem('bridgeup_gemini_key') || '');
   const [keyTestState, setKeyTestState] = useState({ testing: false, status: null, message: '' });
+
+  // 1. Voice Speech-to-Text State
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef(null);
+
+  // 2. Multilingual State ('en' | 'hi' | 'mr')
+  const [selectedLanguage, setSelectedLanguage] = useState('en');
+
+  // 3. Multimodal Photo Upload State
+  const [attachedPhoto, setAttachedPhoto] = useState(null);
+
+  // 4. Text-to-Speech State
+  const [speakingMsgId, setSpeakingMsgId] = useState(null);
+
   const messagesEndRef = useRef(null);
 
   const [messages, setMessages] = useState([
     {
       id: 'msg-1',
       sender: 'bot',
-      text: "Hello! I am BridgeUp AI 🌉. I have real-time access to our verified NGO directory across **Mumbai, Navi Mumbai, Delhi, Bengaluru, and Kolkata**. Tell me what you need or where you want to help!",
+      text: "Hello! I am BridgeUp AI 🌉. I have real-time access to our verified NGO directory across **Mumbai, Navi Mumbai, Delhi, Bengaluru, and Kolkata** with Voice input, Photo diagnosis, and 1-click distress dispatch. Tell me what you need or where you want to help!",
       time: 'Just now'
     }
   ]);
@@ -77,6 +102,102 @@ export default function Chatbot() {
     }
   }, [messages, isOpen]);
 
+  // Web Speech-to-Text Recognition Setup
+  useEffect(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = selectedLanguage === 'hi' ? 'hi-IN' : selectedLanguage === 'mr' ? 'mr-IN' : 'en-IN';
+
+      recognition.onstart = () => setIsListening(true);
+      recognition.onend = () => setIsListening(false);
+      recognition.onerror = (e) => {
+        console.warn('Speech error:', e);
+        setIsListening(false);
+      };
+      recognition.onresult = (e) => {
+        const transcript = e.results[0][0].transcript;
+        if (transcript) {
+          setInputMessage(transcript);
+          handleSendMessage(transcript);
+        }
+      };
+
+      recognitionRef.current = recognition;
+    }
+  }, [selectedLanguage]);
+
+  const toggleVoiceInput = () => {
+    if (!recognitionRef.current) {
+      alert('Speech Recognition is not supported by this browser. Please use Google Chrome or Microsoft Edge.');
+      return;
+    }
+
+    if (isListening) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+    } else {
+      try {
+        recognitionRef.current.start();
+        setIsListening(true);
+      } catch (err) {
+        console.warn('Recognition start error:', err);
+      }
+    }
+  };
+
+  // Text-to-Speech (Read Aloud)
+  const speakMessage = (msgId, text) => {
+    if (!window.speechSynthesis) return;
+
+    if (speakingMsgId === msgId) {
+      window.speechSynthesis.cancel();
+      setSpeakingMsgId(null);
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    const cleanText = text.replace(/[*#_`]/g, '');
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.lang = selectedLanguage === 'hi' ? 'hi-IN' : selectedLanguage === 'mr' ? 'mr-IN' : 'en-IN';
+    utterance.onend = () => setSpeakingMsgId(null);
+    utterance.onerror = () => setSpeakingMsgId(null);
+
+    setSpeakingMsgId(msgId);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  // Photo Attachment Handler
+  const handlePhotoUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setAttachedPhoto(event.target?.result || null);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // 1-Click Direct Emergency Incident Dispatch from Chat
+  const handleOneClickDispatch = (incidentTitle, category, location, photoUrl) => {
+    reportIncident({
+      title: incidentTitle || 'Emergency Assistance Ticket from AI Chatbot',
+      category: category || 'Child Distress & Labor',
+      severity: 'High',
+      location: location || 'Auto-pinned via BridgeUp AI Dispatch',
+      description: `Reported via BridgeUp AI Chatbot assistant with instant triage dispatch.`,
+      photo: photoUrl || attachedPhoto || 'https://images.unsplash.com/photo-1543269865-cbf427effbad?w=600&auto=format&fit=crop&q=80'
+    });
+
+    if (currentRole === 'guest') loginAsUser();
+    setActiveUserTab('incident-report');
+    setIsOpen(false);
+    addToast('Emergency Dispatched! 🚨', 'Incident has been created and broadcasted to local NGO rescue teams.', 'success');
+  };
+
   // Haversine distance calculator
   const calculateDistance = (lat1, lon1, lat2, lon2) => {
     if (!lat1 || !lon1 || !lat2 || !lon2) return null;
@@ -95,19 +216,17 @@ export default function Chatbot() {
 
   // Comprehensive Semantic Search & NGO Filtering Engine
   const searchNgosByRequirement = (userQuery) => {
-    const raw = userQuery.toLowerCase();
-    // Clean query words
+    const raw = (userQuery || '').toLowerCase();
     const tokens = raw.replace(/[^\w\s]/gi, ' ').split(/\s+/).filter(w => w.length > 2);
 
-    // 1. Detect User Target City & Reference Coordinates
     let refCity = 'Delhi';
-    let refCoords = { lat: 28.6139, lng: 77.2090 }; // Default New Delhi
+    let refCoords = { lat: 28.6139, lng: 77.2090 };
 
     const isNaviMumbai = raw.includes('navi mumbai') || raw.includes('nerul') || raw.includes('vashi') || raw.includes('turbhe') || raw.includes('kharghar') || raw.includes('belapur') || raw.includes('panvel') || raw.includes('koparkhairane') || raw.includes('nere');
     const isMumbai = !isNaviMumbai && (raw.includes('mumbai') || raw.includes('bombay') || raw.includes('bandra') || raw.includes('parel') || raw.includes('andheri') || raw.includes('worli') || raw.includes('dadar') || raw.includes('mahim') || raw.includes('chinchpokli') || raw.includes('dharavi'));
-    const isDelhi = raw.includes('delhi') || raw.includes('noida') || raw.includes('ncr') || raw.includes('faridabad') || raw.includes('sarita vihar') || raw.includes('vasant kunj') || raw.includes('hauz khas');
-    const isBengaluru = raw.includes('bangalore') || raw.includes('bengaluru') || raw.includes('rajajinagar') || raw.includes('indiranagar');
-    const isKolkata = raw.includes('kolkata') || raw.includes('calcutta') || raw.includes('park street');
+    const isDelhi = raw.includes('delhi') || raw.includes('noida') || raw.includes('ncr') || raw.includes('faridabad');
+    const isBengaluru = raw.includes('bangalore') || raw.includes('bengaluru');
+    const isKolkata = raw.includes('kolkata') || raw.includes('calcutta');
 
     if (isNaviMumbai) {
       refCity = 'Navi Mumbai';
@@ -123,7 +242,6 @@ export default function Chatbot() {
       refCoords = { lat: 22.5726, lng: 88.3639 };
     }
 
-    // 2. Score every NGO in real-time
     const scoredList = ngos.map(ngo => {
       let score = 0;
       const matchReasons = [];
@@ -137,7 +255,6 @@ export default function Chatbot() {
       const bio = (ngo.bio || '').toLowerCase();
       const fullText = `${name} ${city} ${location} ${address} ${category} ${focus} ${bio}`;
 
-      // A. Exact Name / Brand Matching
       if (name.includes('roti bank') && (raw.includes('roti') || raw.includes('food bank') || raw.includes('rotibank'))) {
         score += 35;
         matchReasons.push('Roti Bank Food Rescue');
@@ -187,7 +304,6 @@ export default function Chatbot() {
         matchReasons.push('Friendicoes Animal Clinic');
       }
 
-      // B. City / Location Matching
       if (isNaviMumbai) {
         if (city.includes('navi mumbai') || location.includes('navi mumbai') || address.includes('navi mumbai') || location.includes('turbhe') || location.includes('nerul') || location.includes('kharghar') || location.includes('panvel') || location.includes('vashi') || location.includes('koparkhairane')) {
           score += 25;
@@ -215,89 +331,49 @@ export default function Chatbot() {
         }
       }
 
-      // C. Cause & Domain Matching
-      // Food / Hunger
-      if (raw.includes('food') || raw.includes('hunger') || raw.includes('meal') || raw.includes('ration') || raw.includes('rice') || raw.includes('dal') || raw.includes('feed') || raw.includes('pantry') || raw.includes('roti') || raw.includes('banquet')) {
-        if (category.includes('hunger') || focus.includes('food') || bio.includes('meal') || bio.includes('food') || name.includes('food') || name.includes('roti')) {
+      if (raw.includes('food') || raw.includes('hunger') || raw.includes('meal') || raw.includes('ration') || raw.includes('rice') || raw.includes('roti') || raw.includes('खाना') || raw.includes('अन्न')) {
+        if (category.includes('hunger') || focus.includes('food') || bio.includes('meal') || name.includes('food') || name.includes('roti')) {
           score += 20;
           matchReasons.push('Hunger & Food Relief');
         }
       }
 
-      // Child / Education / Orphanage
-      if (raw.includes('child') || raw.includes('orphan') || raw.includes('adopt') || raw.includes('education') || raw.includes('school') || raw.includes('kid') || raw.includes('literacy') || raw.includes('backpack') || raw.includes('student') || raw.includes('foster')) {
-        if (category.includes('child') || category.includes('education') || focus.includes('child') || focus.includes('education') || bio.includes('children') || bio.includes('school')) {
+      if (raw.includes('child') || raw.includes('orphan') || raw.includes('adopt') || raw.includes('education') || raw.includes('school') || raw.includes('बच्चा') || raw.includes('मुल')) {
+        if (category.includes('child') || category.includes('education') || focus.includes('child') || focus.includes('education')) {
           score += 20;
           matchReasons.push('Child Welfare & Education');
         }
       }
 
-      // Animal Rescue & Hospital
-      if (raw.includes('animal') || raw.includes('dog') || raw.includes('puppy') || raw.includes('cat') || raw.includes('pet') || raw.includes('stray') || raw.includes('vet') || raw.includes('ambulance') || raw.includes('rabies') || raw.includes('sterilization')) {
-        if (category.includes('animal') || focus.includes('animal') || bio.includes('stray') || bio.includes('animal') || name.includes('animal') || name.includes('spca')) {
+      if (raw.includes('animal') || raw.includes('dog') || raw.includes('cat') || raw.includes('vet') || raw.includes('कुत्ता') || raw.includes('प्राणी')) {
+        if (category.includes('animal') || focus.includes('animal') || name.includes('animal') || name.includes('spca')) {
           score += 22;
           matchReasons.push('Animal Welfare & Clinic');
         }
       }
 
-      // Elder Care / Old Age Shelter
-      if (raw.includes('elder') || raw.includes('old') || raw.includes('senior') || raw.includes('grandparent') || raw.includes('agecare') || raw.includes('geriatric') || raw.includes('hospice') || raw.includes('leprosy') || raw.includes('wheelchair')) {
-        if (category.includes('elder') || focus.includes('elder') || bio.includes('elder') || bio.includes('leprosy') || name.includes('elder') || name.includes('helpage')) {
+      if (raw.includes('elder') || raw.includes('old') || raw.includes('senior') || raw.includes('वृद्ध') || raw.includes('बुजुर्ग')) {
+        if (category.includes('elder') || focus.includes('elder') || name.includes('elder') || name.includes('helpage')) {
           score += 20;
           matchReasons.push('Elder Care & Hospice');
         }
       }
 
-      // Cancer & Critical Healthcare
-      if (raw.includes('cancer') || raw.includes('chemo') || raw.includes('tumor') || raw.includes('hospital') || raw.includes('patient') || raw.includes('medical') || raw.includes('clinic') || raw.includes('health') || raw.includes('tata memorial') || raw.includes('actrec')) {
-        if (category.includes('healthcare') || category.includes('cancer') || focus.includes('cancer') || bio.includes('cancer') || bio.includes('medical') || bio.includes('hospital')) {
+      if (raw.includes('cancer') || raw.includes('hospital') || raw.includes('medical') || raw.includes('कैंसर') || raw.includes('रुग्णालय')) {
+        if (category.includes('healthcare') || category.includes('cancer') || focus.includes('cancer')) {
           score += 24;
           matchReasons.push('Cancer & Healthcare Support');
         }
       }
 
-      // Blind & Disability
-      if (raw.includes('blind') || raw.includes('braille') || raw.includes('visual') || raw.includes('disability') || raw.includes('handicap')) {
-        if (category.includes('disability') || focus.includes('braille') || bio.includes('visually impaired') || name.includes('blind')) {
-          score += 25;
-          matchReasons.push('Disability & Braille Support');
-        }
-      }
-
-      // Disaster Relief & Blankets / Clothes
-      if (raw.includes('disaster') || raw.includes('blanket') || raw.includes('cloth') || raw.includes('flood') || raw.includes('warmth') || raw.includes('rural')) {
-        if (category.includes('disaster') || focus.includes('disaster') || bio.includes('disaster') || focus.includes('clothing')) {
-          score += 20;
-          matchReasons.push('Disaster Relief & Supplies');
-        }
-      }
-
-      // D. Token Keyword Matches across fullText
       tokens.forEach(tok => {
-        if (fullText.includes(tok)) {
-          score += 3;
-        }
+        if (fullText.includes(tok)) score += 3;
       });
 
-      // E. Check Urgent Needs Matches
-      if (ngo.urgentNeeds && ngo.urgentNeeds.length > 0) {
-        ngo.urgentNeeds.forEach(un => {
-          const itemText = (un.item || '').toLowerCase();
-          tokens.forEach(tok => {
-            if (itemText.includes(tok)) {
-              score += 8;
-              matchReasons.push(`Needs: ${un.item}`);
-            }
-          });
-        });
-      }
-
-      // Distance calculation from reference city
       const dist = ngo.coordinates
         ? calculateDistance(refCoords.lat, refCoords.lng, ngo.coordinates.lat, ngo.coordinates.lng)
         : null;
 
-      // Link live active requirements from AppContext
       const ngoReqs = requirements.filter(r => r.ngoId === ngo.id || r.ngoName === ngo.name);
 
       return {
@@ -309,14 +385,9 @@ export default function Chatbot() {
       };
     });
 
-    // Filter positive matches
     let results = scoredList.filter(n => n.matchScore > 0);
-
-    // Sort by highest match score, then closest distance
     results.sort((a, b) => {
-      if (b.matchScore !== a.matchScore) {
-        return b.matchScore - a.matchScore;
-      }
+      if (b.matchScore !== a.matchScore) return b.matchScore - a.matchScore;
       const distA = parseFloat(a.distanceKm || '999');
       const distB = parseFloat(b.distanceKm || '999');
       return distA - distB;
@@ -329,7 +400,6 @@ export default function Chatbot() {
       };
     }
 
-    // Fallback: If no strict match, show the closest NGOs in that target city or top verified NGOs
     const fallbackCityNgos = scoredList.filter(n => (n.city || '').toLowerCase().includes(refCity.toLowerCase()));
     if (fallbackCityNgos.length > 0) {
       return {
@@ -345,9 +415,8 @@ export default function Chatbot() {
   };
 
   const generateBotReply = (userQuery) => {
-    const q = userQuery.toLowerCase().trim();
+    const q = (userQuery || '').toLowerCase().trim();
 
-    // 1. Check if user is asking for general platform workflows
     if (q.includes('how to report') || q.includes('report incident') || q.includes('distress ticket')) {
       return {
         text: "🚨 **Reporting an Emergency Incident on BridgeUp:**\n\n1. Open the **Three-Pin Drawer (☰)** in the top-left and select **'Incident Reporting'**.\n2. Select category (*Child Distress, Elder Neglect, Food Rescue, Animal Rescue, Disaster*).\n3. Use **1-click GPS auto-location**, attach a photo, and set severity level.\n4. **Real-Time Dispatch:** Your ticket appears instantly on local NGO and Admin feeds. When the NGO resolves it, their evidence photo and notes will show directly in your tracker!",
@@ -383,24 +452,16 @@ export default function Chatbot() {
       };
     }
 
-    if (q.includes('verify ngo') || (q.includes('admin') && q.includes('verify'))) {
-      return {
-        text: "🛡️ **Multi-Tier NGO Verification Workflow:**\n\n1. **NGO Registration:** NGOs upload their Government Societies Registration, 80G/12A Tax Orders, and FCRA clearances.\n2. **Admin Verification:** Platform Admins review uploaded PDFs and complete the statutory checklist.\n3. **Public Trust Seal:** Approved NGOs receive the green **'Verified NGO'** shield across all public listings.",
-        action: () => {
-          if (currentRole === 'admin') setActiveAdminTab('ngo-verification');
-          else if (currentRole === 'ngo') setActiveNgoTab('profile');
-          else loginAsAdmin();
-        }
-      };
-    }
-
-    // 2. Perform Dynamic Semantic NGO Search for Any Other Query
     const searchResult = searchNgosByRequirement(userQuery);
     const { cityFound, items } = searchResult;
 
     if (items && items.length > 0) {
       return {
-        text: `🔍 **Found ${items.length} verified NGOs matching your prompt in ${cityFound}:**\nHere are their active urgent needs, verified credentials, and direct contact options:`,
+        text: selectedLanguage === 'hi' 
+          ? `🔍 **${cityFound} में आपके अनुरोध के अनुसार ${items.length} सत्यापित एनजीओ मिले:**`
+          : selectedLanguage === 'mr'
+          ? `🔍 **${cityFound} मध्ये आपल्या गरजेनुसार ${items.length} सत्यापित एनजीओ सापडले:**`
+          : `🔍 **Found ${items.length} verified NGOs matching your prompt in ${cityFound}:**\nHere are their active urgent needs, verified credentials, and direct contact options:`,
         ngoCards: items,
         action: null
       };
@@ -414,29 +475,34 @@ export default function Chatbot() {
 
   const handleSendMessage = async (textToSend) => {
     const text = textToSend || inputMessage;
-    if (!text.trim()) return;
+    const photoToUpload = attachedPhoto;
+    if (!text.trim() && !photoToUpload) return;
 
     const userMsg = {
       id: `msg-${Date.now()}`,
       sender: 'user',
-      text: text.trim(),
+      text: text.trim() || (photoToUpload ? '📸 [Attached Photo for Analysis]' : ''),
+      photo: photoToUpload,
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
     setMessages(prev => [...prev, userMsg]);
     setInputMessage('');
+    setAttachedPhoto(null);
     setIsTyping(true);
 
     // 1. Calculate local matching NGO cards & instant classification
     const response = generateBotReply(text);
 
-    // 2. Attempt live Gemini AI enhancement if API key or network is active
+    // 2. Attempt live Gemini AI enhancement if API key is active
     let geminiEnhancedText = null;
     try {
-      geminiEnhancedText = await generateGeminiResponse(text, ngos);
+      geminiEnhancedText = await generateGeminiResponse(text, ngos, photoToUpload, selectedLanguage);
     } catch (e) {
       console.warn('Gemini stream fallback:', e);
     }
+
+    const isDistressDetected = (text && (text.toLowerCase().includes('accident') || text.toLowerCase().includes('injured') || text.toLowerCase().includes('emergency') || text.toLowerCase().includes('rescue') || text.toLowerCase().includes('help') || text.toLowerCase().includes('distress'))) || photoToUpload;
 
     const botMsg = {
       id: `msg-${Date.now() + 1}`,
@@ -444,6 +510,13 @@ export default function Chatbot() {
       text: geminiEnhancedText || response.text,
       ngoCards: response.ngoCards || null,
       action: response.action,
+      isDistress: isDistressDetected,
+      dispatchedContext: {
+        title: text ? text.slice(0, 50) : 'Emergency Distress Ticket from Chatbot',
+        category: text?.toLowerCase().includes('animal') ? 'Animal Welfare' : text?.toLowerCase().includes('food') ? 'Food Waste Rescue' : text?.toLowerCase().includes('elder') ? 'Elder Neglect' : 'Child Distress & Labor',
+        location: 'Auto-detected nearby user location',
+        photo: photoToUpload
+      },
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
@@ -462,16 +535,13 @@ export default function Chatbot() {
             aria-label="Open BridgeUp AI Assistant"
             title="BridgeUp AI Chatbot Assistant (Bottom-Left)"
           >
-            {/* Pulsing indicator */}
             <span className="absolute -top-1 -right-1 flex h-4 w-4">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-mint-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-4 w-4 bg-brand-amber-500"></span>
             </span>
-
             <Bot className="w-6 h-6 sm:w-7 sm:h-7 text-brand-mint-300 group-hover:rotate-12 transition-transform duration-300" />
           </button>
 
-          {/* Floating Welcoming Badge */}
           {showGreetingBubble && (
             <div
               onClick={() => setIsOpen(true)}
@@ -495,52 +565,68 @@ export default function Chatbot() {
 
       {/* Chat Window */}
       {isOpen && (
-        <div className="w-[calc(100vw-24px)] sm:w-[420px] h-[520px] max-h-[80vh] bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200/80 dark:border-slate-800 flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-5 duration-300">
+        <div className="w-[calc(100vw-24px)] sm:w-[440px] h-[550px] max-h-[85vh] bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200/80 dark:border-slate-800 flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-5 duration-300">
+          
           {/* Header */}
-          <div className="bg-gradient-to-r from-brand-teal-900 via-brand-teal-800 to-brand-teal-700 text-white px-5 py-4 flex items-center justify-between shadow-md">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-brand-teal-700/80 border border-brand-mint-400/50 flex items-center justify-center">
+          <div className="bg-gradient-to-r from-brand-teal-900 via-brand-teal-800 to-brand-teal-700 text-white px-4 py-3.5 flex items-center justify-between shadow-md">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-full bg-brand-teal-700/80 border border-brand-mint-400/50 flex items-center justify-center">
                 <Bot className="w-5 h-5 text-brand-mint-300" />
               </div>
               <div>
                 <div className="flex items-center gap-1.5">
-                  <h3 className="font-bold text-sm tracking-wide">BridgeUp AI Assistant</h3>
+                  <h3 className="font-bold text-xs sm:text-sm tracking-wide">BridgeUp AI Assistant</h3>
                   <span className="w-2 h-2 rounded-full bg-brand-mint-400 animate-pulse"></span>
                 </div>
-                <p className="text-[11px] text-brand-mint-200">Real NGO Search & Need Filter</p>
+                <p className="text-[10px] text-brand-mint-200">Gemini 3.5 AI • Voice & Vision Active</p>
               </div>
             </div>
 
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1.5">
+              {/* Language Switcher */}
+              <div className="relative">
+                <select
+                  value={selectedLanguage}
+                  onChange={(e) => setSelectedLanguage(e.target.value)}
+                  className="bg-black/20 hover:bg-black/30 border border-white/20 text-white text-[10px] font-bold rounded-lg px-2 py-1 focus:outline-none cursor-pointer"
+                  title="Change AI Language"
+                >
+                  <option value="en" className="text-slate-900">EN (English)</option>
+                  <option value="hi" className="text-slate-900">हिन्दी (Hindi)</option>
+                  <option value="mr" className="text-slate-900">मराठी (Marathi)</option>
+                </select>
+              </div>
+
+              {/* Gemini Key Config */}
               <button
                 onClick={() => setShowKeyModal(!showKeyModal)}
-                className={`p-1.5 rounded-full transition-colors ${
+                className={`p-1.5 rounded-lg transition-colors ${
                   geminiApiKey ? 'text-brand-mint-300 bg-white/10 hover:bg-white/20' : 'text-slate-300 hover:text-white hover:bg-white/10'
                 }`}
                 title={geminiApiKey ? 'Gemini AI API Key Configured' : 'Configure Gemini API Key'}
               >
-                <KeyRound className="w-4 h-4" />
+                <KeyRound className="w-3.5 h-3.5" />
               </button>
 
               <button
                 onClick={() => setIsOpen(false)}
-                className="p-1.5 text-slate-300 hover:text-white hover:bg-white/10 rounded-full transition-colors"
+                className="p-1.5 text-slate-300 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
           </div>
 
           {/* Gemini API Key Configuration Banner */}
           {showKeyModal && (
-            <div className="p-3.5 bg-brand-teal-950 text-white border-b border-brand-teal-800 space-y-2.5 animate-in fade-in">
+            <div className="p-3 bg-brand-teal-950 text-white border-b border-brand-teal-800 space-y-2 animate-in fade-in">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-bold text-brand-mint-300 flex items-center gap-1.5">
                   <KeyRound className="w-3.5 h-3.5 text-brand-amber-400" />
                   Google Gemini API Key Setup
                 </span>
                 <span className="text-[9px] bg-brand-mint-500/20 text-brand-mint-300 px-2 py-0.5 rounded-full font-bold">
-                  Gemini 2.5 Flash / 1.5
+                  Gemini 3.5 Flash Active
                 </span>
               </div>
 
@@ -584,7 +670,7 @@ export default function Chatbot() {
                         setKeyTestState({ testing: false, status: 'error', message: errMsg });
                       }
                     } catch (err) {
-                      setKeyTestState({ testing: false, status: 'error', message: `Network request error: ${err.message}` });
+                      setKeyTestState({ testing: false, status: 'error', message: `Network error: ${err.message}` });
                     }
                   }}
                   className="px-3 py-1.5 rounded-xl bg-brand-mint-500 hover:bg-brand-mint-400 disabled:opacity-50 text-slate-950 font-black text-xs transition-colors flex items-center gap-1"
@@ -593,56 +679,80 @@ export default function Chatbot() {
                 </button>
               </div>
 
-              {/* In-UI Status Box */}
               {keyTestState.status && (
-                <div className={`p-2.5 rounded-xl text-xs flex items-start gap-2 ${
+                <div className={`p-2 rounded-xl text-xs flex items-start gap-1.5 ${
                   keyTestState.status === 'success'
                     ? 'bg-emerald-950/80 border border-emerald-500/60 text-emerald-200'
                     : keyTestState.status === 'testing'
                     ? 'bg-blue-950/80 border border-blue-500/60 text-blue-200'
                     : 'bg-red-950/80 border border-red-500/60 text-red-200'
                 }`}>
-                  <span className="text-sm flex-shrink-0">
+                  <span className="text-xs flex-shrink-0">
                     {keyTestState.status === 'success' ? '✅' : keyTestState.status === 'testing' ? '⏳' : '❌'}
                   </span>
-                  <p className="text-[11px] leading-relaxed break-words font-medium">
+                  <p className="text-[10px] leading-tight break-words font-medium">
                     {keyTestState.message}
                   </p>
                 </div>
               )}
-
-              <p className="text-[10px] text-slate-400 leading-tight">
-                Stored in your browser local storage. Click <strong>Test & Save</strong> to run a live test.
-              </p>
             </div>
           )}
 
           {/* Messages Container */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-slate-50 dark:bg-slate-950 text-xs">
+          <div className="flex-1 overflow-y-auto p-3.5 space-y-3 bg-slate-50 dark:bg-slate-950 text-xs">
             {messages.map(msg => (
               <div
                 key={msg.id}
                 className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'} gap-1`}
               >
-                <div className={`flex gap-2.5 max-w-[95%] ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`flex gap-2 max-w-[95%] ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
                   {msg.sender === 'bot' && (
-                    <div className="w-7 h-7 rounded-full bg-brand-teal-800 text-brand-mint-300 flex items-center justify-center flex-shrink-0 mt-0.5 shadow-sm">
-                      <Bot className="w-4 h-4" />
+                    <div className="w-6 h-6 rounded-full bg-brand-teal-800 text-brand-mint-300 flex items-center justify-center flex-shrink-0 mt-0.5 shadow-sm">
+                      <Bot className="w-3.5 h-3.5" />
                     </div>
                   )}
 
                   <div
-                    className={`rounded-2xl p-3.5 leading-relaxed shadow-sm ${
+                    className={`rounded-2xl p-3 leading-relaxed shadow-sm ${
                       msg.sender === 'user'
                         ? 'bg-brand-teal-800 text-white rounded-br-none'
                         : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border border-slate-200/80 dark:border-slate-800 rounded-bl-none w-full'
                     }`}
                   >
+                    {/* If user attached a photo */}
+                    {msg.photo && (
+                      <div className="mb-2 rounded-xl overflow-hidden border border-white/20 max-h-40">
+                        <img src={msg.photo} alt="Attached" className="w-full h-32 object-cover" />
+                      </div>
+                    )}
+
                     <p className="whitespace-pre-line text-xs font-normal">
                       {msg.text}
                     </p>
 
-                    {/* Interactive Real NGO Cards inside Chatbot Message */}
+                    {/* 1-Click Emergency Incident Dispatch Button from Chat */}
+                    {msg.sender === 'bot' && msg.isDistress && (
+                      <div className="mt-2.5 p-2.5 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 space-y-2">
+                        <div className="flex items-center gap-1.5 text-red-700 dark:text-red-300 font-bold text-[11px]">
+                          <AlertOctagon className="w-3.5 h-3.5 text-red-600" />
+                          <span>Distress Situation Detected</span>
+                        </div>
+                        <button
+                          onClick={() => handleOneClickDispatch(
+                            msg.dispatchedContext?.title,
+                            msg.dispatchedContext?.category,
+                            msg.dispatchedContext?.location,
+                            msg.dispatchedContext?.photo
+                          )}
+                          className="w-full py-2 px-3 rounded-lg bg-red-600 hover:bg-red-700 text-white font-black text-xs shadow-md transition-all flex items-center justify-center gap-1.5"
+                        >
+                          <AlertTriangle className="w-3.5 h-3.5" />
+                          <span>🚨 Dispatch Emergency Ticket to Local NGOs</span>
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Interactive Real NGO Cards */}
                     {msg.ngoCards && msg.ngoCards.length > 0 && (
                       <div className="mt-3 space-y-2.5">
                         {msg.ngoCards.map((ngo, idx) => (
@@ -676,7 +786,6 @@ export default function Chatbot() {
                               </span>
                             </div>
 
-                            {/* Location & Match Reasons */}
                             <div className="space-y-1">
                               <div className="flex items-center gap-2 text-[11px] text-slate-600 dark:text-slate-300">
                                 <MapPin className="w-3.5 h-3.5 text-brand-teal-600 flex-shrink-0" />
@@ -688,7 +797,6 @@ export default function Chatbot() {
                                 )}
                               </div>
 
-                              {/* Match Tags */}
                               {ngo.matchReasons && ngo.matchReasons.length > 0 && (
                                 <div className="flex flex-wrap gap-1">
                                   {ngo.matchReasons.slice(0, 2).map((r, ri) => (
@@ -700,7 +808,6 @@ export default function Chatbot() {
                               )}
                             </div>
 
-                            {/* Active Urgent Need Alert */}
                             {ngo.urgentNeeds && ngo.urgentNeeds.length > 0 && (
                               <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-[10px] text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
                                 <ShoppingBag className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
@@ -708,7 +815,6 @@ export default function Chatbot() {
                               </div>
                             )}
 
-                            {/* Quick Action Buttons */}
                             <div className="flex items-center gap-1.5 pt-1">
                               <a
                                 href={`tel:${ngo.phone || '+919800000000'}`}
@@ -735,23 +841,35 @@ export default function Chatbot() {
                       </div>
                     )}
 
-                    {/* Optional Quick Action Button inside message */}
-                    {msg.action && (
-                      <button
-                        onClick={() => {
-                          msg.action();
-                          setIsOpen(false);
-                        }}
-                        className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-mint-100 dark:bg-brand-mint-950 text-brand-teal-900 dark:text-brand-mint-300 hover:bg-brand-mint-200 font-bold text-[11px] transition-colors shadow-sm"
-                      >
-                        <Sparkles className="w-3.5 h-3.5 text-brand-teal-700" />
-                        <span>Take me there &rarr;</span>
-                      </button>
-                    )}
+                    {/* Action & Read Aloud Footer */}
+                    <div className="flex items-center justify-between mt-2 pt-1 border-t border-slate-100 dark:border-slate-800/80">
+                      {msg.sender === 'bot' ? (
+                        <button
+                          type="button"
+                          onClick={() => speakMessage(msg.id, msg.text)}
+                          className="text-[10px] text-brand-teal-700 dark:text-brand-mint-400 hover:underline flex items-center gap-1"
+                          title="Read message aloud"
+                        >
+                          {speakingMsgId === msg.id ? (
+                            <>
+                              <VolumeX className="w-3 h-3 text-red-500 animate-pulse" />
+                              <span>Stop Voice</span>
+                            </>
+                          ) : (
+                            <>
+                              <Volume2 className="w-3 h-3" />
+                              <span>Listen</span>
+                            </>
+                          )}
+                        </button>
+                      ) : (
+                        <span></span>
+                      )}
 
-                    <span className={`block text-[10px] mt-1.5 text-right ${msg.sender === 'user' ? 'text-brand-mint-200' : 'text-slate-400 dark:text-slate-500'}`}>
-                      {msg.time}
-                    </span>
+                      <span className={`text-[10px] ${msg.sender === 'user' ? 'text-brand-mint-200' : 'text-slate-400 dark:text-slate-500'}`}>
+                        {msg.time}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -760,7 +878,7 @@ export default function Chatbot() {
             {isTyping && (
               <div className="flex items-center gap-2 text-slate-400 text-xs p-2">
                 <Bot className="w-4 h-4 text-brand-teal-700 animate-spin" />
-                <span>BridgeUp AI is finding matching NGOs...</span>
+                <span>BridgeUp AI is reasoning & scanning verified directory...</span>
               </div>
             )}
 
@@ -768,37 +886,74 @@ export default function Chatbot() {
           </div>
 
           {/* Quick Suggestion Chips */}
-          <div className="p-2.5 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 flex gap-1.5 overflow-x-auto no-scrollbar">
+          <div className="p-2 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 flex gap-1.5 overflow-x-auto no-scrollbar">
             {quickPrompts.map((p, idx) => (
               <button
                 key={idx}
                 onClick={() => handleSendMessage(p.query)}
-                className="whitespace-nowrap px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-brand-teal-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 hover:text-brand-teal-900 dark:hover:text-brand-mint-300 border border-slate-200 dark:border-slate-700 text-[11px] font-medium transition-colors"
+                className="whitespace-nowrap px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-brand-teal-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 hover:text-brand-teal-900 dark:hover:text-brand-mint-300 border border-slate-200 dark:border-slate-700 text-[10px] font-medium transition-colors"
               >
                 {p.label}
               </button>
             ))}
           </div>
 
-          {/* Input Area */}
+          {/* Attached Photo Preview */}
+          {attachedPhoto && (
+            <div className="px-3 py-1.5 bg-brand-teal-50 dark:bg-slate-800 flex items-center justify-between border-t border-slate-200 dark:border-slate-700">
+              <div className="flex items-center gap-2">
+                <img src={attachedPhoto} alt="Attached" className="w-8 h-8 rounded-lg object-cover" />
+                <span className="text-[10px] font-bold text-slate-700 dark:text-slate-200">Photo attached for AI Diagnosis</span>
+              </div>
+              <button
+                onClick={() => setAttachedPhoto(null)}
+                className="p-1 rounded-full text-slate-400 hover:text-red-500"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* Input Area with Mic & Photo Upload */}
           <form
             onSubmit={(e) => {
               e.preventDefault();
               handleSendMessage();
             }}
-            className="p-3 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex items-center gap-2"
+            className="p-2.5 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex items-center gap-1.5"
           >
+            {/* Camera / Photo Upload Button */}
+            <label className="p-2 rounded-xl text-slate-500 hover:text-brand-teal-800 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition-colors" title="Attach Photo for AI Diagnosis">
+              <Camera className="w-4 h-4" />
+              <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
+            </label>
+
+            {/* Voice Input (Speech-to-Text) Button */}
+            <button
+              type="button"
+              onClick={toggleVoiceInput}
+              className={`p-2 rounded-xl transition-all ${
+                isListening
+                  ? 'bg-red-500 text-white animate-pulse shadow-md'
+                  : 'text-slate-500 hover:text-brand-teal-800 hover:bg-slate-100 dark:hover:bg-slate-800'
+              }`}
+              title={isListening ? 'Listening... Speak now' : 'Start Voice Input (Speech-to-Text)'}
+            >
+              {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+            </button>
+
             <input
               type="text"
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
-              placeholder="e.g. Find NGOs in Navi Mumbai or cancer support in Mumbai..."
-              className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs focus:outline-none focus:ring-2 focus:ring-brand-teal-600 focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder-slate-400"
+              placeholder={isListening ? "Listening to your voice..." : "Ask in English, हिन्दी, or मराठी..."}
+              className="flex-1 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs focus:outline-none focus:ring-2 focus:ring-brand-teal-600 focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder-slate-400"
             />
+
             <button
               type="submit"
-              disabled={!inputMessage.trim()}
-              className="p-2.5 rounded-xl bg-brand-teal-800 hover:bg-brand-teal-700 disabled:opacity-40 text-white transition-all shadow-md"
+              disabled={!inputMessage.trim() && !attachedPhoto}
+              className="p-2.5 rounded-xl bg-brand-teal-800 hover:bg-brand-teal-700 disabled:opacity-40 text-white transition-all shadow-md flex-shrink-0"
             >
               <Send className="w-4 h-4" />
             </button>

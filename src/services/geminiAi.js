@@ -29,9 +29,9 @@ export async function getGeminiClient() {
 
 /**
  * Generate intelligent humanitarian and NGO guidance using Gemini AI
- * Uses @google/genai SDK with automatic REST fallback and multi-model support
+ * Supports text, multimodal image analysis, and multilingual translation (EN, HI, MR)
  */
-export async function generateGeminiResponse(userPrompt, availableNgos = []) {
+export async function generateGeminiResponse(userPrompt, availableNgos = [], imageBase64 = null, language = 'en') {
   const apiKey = geminiConfig.apiKey || localStorage.getItem('bridgeup_gemini_key');
   if (!apiKey) return null;
 
@@ -40,14 +40,22 @@ export async function generateGeminiResponse(userPrompt, availableNgos = []) {
     `- ${n.name} (${n.city}, ${n.location}): ${n.focusArea}. Needs: ${n.urgentNeeds?.map(u => u.item).join(', ') || 'General funding'}. Phone: ${n.phone}`
   ).join('\n');
 
+  let langInstruction = 'Answer in English.';
+  if (language === 'hi') {
+    langInstruction = 'कृपया उत्तर शुद्ध एवं सरल हिन्दी (Hindi) में दें। Provide answer in friendly Hindi.';
+  } else if (language === 'mr') {
+    langInstruction = 'कृपया उत्तर मराठीत (Marathi) द्या. Provide answer in friendly Marathi.';
+  }
+
   const systemPrompt = `You are BridgeUp AI, an intelligent humanitarian civic assistant in India. 
+${langInstruction}
 Your purpose is to connect citizens with verified NGOs for hunger relief, child welfare, elder care, animal rescues, medical assistance (cancer/hospice), and emergency disaster response.
+
+If an image is attached, analyze the situation (e.g. injured stray animal, excess food quantity, flood distress, elder shelter need), provide rapid first-aid or safety guidance, and recommend the best matching NGOs.
+
 Available Verified NGOs in database:
-${ngoSummary}
+${ngoSummary}`;
 
-Answer concisely in friendly markdown. If the user is looking for an NGO, highlight the matching NGOs and what items they need.`;
-
-  // 1. Try Direct Gemini REST Endpoint with Google's latest active models (gemini-3.5-flash, gemini-3.5-flash-lite, gemini-flash-latest)
   const modelsToTry = [
     'gemini-3.5-flash',
     'gemini-3.5-flash-lite',
@@ -55,10 +63,22 @@ Answer concisely in friendly markdown. If the user is looking for an NGO, highli
     'gemini-2.5-flash'
   ];
   const trimmedKey = apiKey.trim();
-  
+
+  // Prepare prompt payload parts
+  const parts = [];
+  if (imageBase64) {
+    const cleanBase64 = imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');
+    parts.push({
+      inline_data: {
+        mime_type: 'image/jpeg',
+        data: cleanBase64
+      }
+    });
+  }
+  parts.push({ text: `${systemPrompt}\n\nUser Question/Context: ${userPrompt || 'Analyze this incident photo and recommend verified NGOs.'}` });
+
   for (const model of modelsToTry) {
     try {
-      // Use clean header authentication without query param collision
       const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
       const headers = { 
         'Content-Type': 'application/json',
@@ -69,11 +89,7 @@ Answer concisely in friendly markdown. If the user is looking for an NGO, highli
         method: 'POST',
         headers: headers,
         body: JSON.stringify({
-          contents: [
-            {
-              parts: [{ text: `${systemPrompt}\n\nUser Question: ${userPrompt}` }]
-            }
-          ]
+          contents: [{ parts }]
         })
       });
 
@@ -85,22 +101,6 @@ Answer concisely in friendly markdown. If the user is looking for an NGO, highli
     } catch (err) {
       console.warn(`REST call to ${model} failed, trying next:`, err);
     }
-  }
-
-  // 2. Try SDK Fallback
-  try {
-    const ai = await getGeminiClient();
-    if (ai) {
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: [
-          { role: 'user', parts: [{ text: `${systemPrompt}\n\nUser Question: ${userPrompt}` }] }
-        ]
-      });
-      if (response && response.text) return response.text;
-    }
-  } catch (sdkErr) {
-    console.warn('Gemini SDK call fallback:', sdkErr);
   }
 
   return null;
