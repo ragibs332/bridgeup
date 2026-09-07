@@ -232,22 +232,22 @@ export default function DrawerMenu() {
         </div>
 
         {/* Role Identity Banner */}
-        {currentRole === 'user' && (
-          <div className="p-4 bg-brand-teal-50 border-b border-brand-teal-100/60 flex items-center gap-3">
+        {currentRole === 'user' && currentUser && (
+          <div className="p-4 bg-brand-teal-50 dark:bg-brand-teal-950/40 border-b border-brand-teal-100/60 dark:border-brand-teal-800 flex items-center gap-3">
             <img
-              src={currentUser.avatar}
-              alt={currentUser.name}
+              src={currentUser.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80'}
+              alt={currentUser.name || 'Citizen'}
               className="w-12 h-12 rounded-full object-cover ring-2 ring-brand-teal-600 shadow-sm"
             />
             <div className="min-w-0 flex-1">
-              <h4 className="font-bold text-sm text-slate-900 truncate">{currentUser.name}</h4>
-              <p className="text-xs text-slate-600 truncate">{currentUser.email}</p>
+              <h4 className="font-bold text-sm text-slate-900 dark:text-white truncate">{currentUser.name || 'Citizen'}</h4>
+              <p className="text-xs text-slate-600 dark:text-slate-400 truncate">{currentUser.email || ''}</p>
               <div className="flex items-center gap-2 mt-1">
-                <span className="text-[10px] bg-brand-mint-100 text-brand-teal-900 px-2 py-0.5 rounded-full font-bold">
-                  {currentUser.badges[0]}
+                <span className="text-[10px] bg-brand-mint-100 dark:bg-brand-mint-950/60 text-brand-teal-900 dark:text-brand-mint-300 px-2 py-0.5 rounded-full font-bold">
+                  {currentUser.badges?.[0] || 'Verified Citizen'}
                 </span>
-                <span className="text-[10px] text-slate-500 font-semibold">
-                  ₹{currentUser.totalDonated.toLocaleString()} donated
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold">
+                  ₹{(currentUser.totalDonated || 0).toLocaleString()} donated
                 </span>
               </div>
             </div>

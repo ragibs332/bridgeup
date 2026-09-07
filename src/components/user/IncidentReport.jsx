@@ -449,9 +449,9 @@ export default function IncidentReport() {
                 )}
 
                 {/* Status Footer */}
-                <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-                  <span>Reported by: <strong>{inc.reporterName}</strong></span>
-                  <span>{new Date(inc.createdAt).toLocaleDateString()}</span>
+                <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+                  <span>Reported by: <strong>{inc.reporterName || 'Concerned Citizen'}</strong></span>
+                  <span>{inc.createdAt ? new Date(inc.createdAt).toLocaleDateString() : new Date().toLocaleDateString()}</span>
                 </div>
               </div>
             ))}

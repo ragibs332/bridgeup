@@ -33,10 +33,10 @@ export default function UserDashboard() {
     addToast
   } = useApp();
 
-  const userIncidents = incidents.filter(i => i.reporterEmail === currentUser.email || i.reporterName === currentUser.name);
+  const userIncidents = incidents.filter(i => (currentUser && (i.reporterEmail === currentUser.email || i.reporterName === currentUser.name)));
   const activeIncidents = incidents.filter(i => i.status === 'Reported' || i.status === 'In Progress');
-  const recentDonations = currentUser.donationHistory || [];
-  const taxSaved = Math.round(currentUser.totalDonated * 0.5);
+  const recentDonations = currentUser?.donationHistory || [];
+  const taxSaved = Math.round((currentUser?.totalDonated || 0) * 0.5);
 
   const handleDownloadReceipt = (receiptId, title) => {
     addToast('80G Receipt Downloaded', `Certificate ${receiptId} for ${title} has been downloaded.`, 'success');
@@ -54,7 +54,7 @@ export default function UserDashboard() {
                 <Sparkles className="w-3.5 h-3.5 text-brand-amber-400" />
                 <span>Verified Citizen & Donor</span>
               </div>
-              {currentUser.badges?.map(b => (
+              {currentUser?.badges?.map(b => (
                 <span key={b} className="text-[11px] bg-white/10 px-2.5 py-0.5 rounded-full border border-white/15 font-semibold text-slate-200">
                   ★ {b}
                 </span>
@@ -62,7 +62,7 @@ export default function UserDashboard() {
             </div>
 
             <h1 className="text-2xl sm:text-3xl font-black tracking-tight">
-              Welcome Back, {currentUser.name}!
+              Welcome Back, {currentUser?.name || 'Citizen'}!
             </h1>
             
             <p className="text-xs sm:text-sm text-brand-mint-100 max-w-xl leading-relaxed">
@@ -91,13 +91,13 @@ export default function UserDashboard() {
           {/* Citizen Lifetime Impact Cards */}
           <div className="grid grid-cols-3 gap-3">
             <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/15 text-center shadow-lg min-w-[110px]">
-              <div className="text-xl sm:text-2xl font-black text-brand-mint-300">₹{currentUser.totalDonated.toLocaleString()}</div>
+              <div className="text-xl sm:text-2xl font-black text-brand-mint-300">₹{(currentUser?.totalDonated || 0).toLocaleString()}</div>
               <div className="text-[11px] text-slate-300 font-semibold mt-0.5">80G Donated</div>
               <div className="text-[10px] text-brand-amber-300 font-bold mt-1">₹{taxSaved.toLocaleString()} Saved</div>
             </div>
 
             <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/15 text-center shadow-lg min-w-[110px]">
-              <div className="text-xl sm:text-2xl font-black text-brand-amber-400">{currentUser.volunteerHours} hrs</div>
+              <div className="text-xl sm:text-2xl font-black text-brand-amber-400">{currentUser?.volunteerHours || 0} hrs</div>
               <div className="text-[11px] text-slate-300 font-semibold mt-0.5">Volunteered</div>
               <div className="text-[10px] text-slate-300 font-medium mt-1">Community Aid</div>
             </div>

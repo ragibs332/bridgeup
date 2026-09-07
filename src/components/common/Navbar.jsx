@@ -137,17 +137,17 @@ export default function Navbar() {
           )}
 
           {/* User Profile Pill */}
-          {currentRole === 'user' && (
+          {currentRole === 'user' && currentUser && (
             <button
               onClick={() => setActiveUserTab('profile')}
               className="flex items-center gap-2.5 pl-2 pr-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-brand-teal-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition-colors text-xs font-medium text-slate-800 dark:text-slate-200"
             >
               <img
-                src={currentUser.avatar}
-                alt={currentUser.name}
+                src={currentUser.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80'}
+                alt={currentUser.name || 'Citizen'}
                 className="w-7 h-7 rounded-full object-cover ring-2 ring-brand-teal-600"
               />
-              <span className="hidden sm:inline font-semibold">{currentUser.name.split(' ')[0]}</span>
+              <span className="hidden sm:inline font-semibold">{currentUser.name?.split(' ')[0] || 'Citizen'}</span>
             </button>
           )}
 

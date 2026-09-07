@@ -19,11 +19,11 @@ export default function UserProfile() {
   const { currentUser, incidents, adoptions, addToast } = useApp();
 
   const userIncidents = incidents.filter(
-    i => i.reporterEmail === currentUser.email || i.reporterName === currentUser.name
+    i => currentUser && (i.reporterEmail === currentUser.email || i.reporterName === currentUser.name)
   );
 
   const bookmarkedAdoptions = adoptions.filter(a =>
-    currentUser.savedAdoptions?.includes(a.id)
+    currentUser?.savedAdoptions?.includes(a.id)
   );
 
   const handleDownloadReceipt = (receiptId) => {
@@ -33,26 +33,26 @@ export default function UserProfile() {
   return (
     <div className="space-y-8 pb-16">
       {/* Profile Header Card */}
-      <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-card-soft">
+      <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-card-soft">
         <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
           <img
-            src={currentUser.avatar}
-            alt={currentUser.name}
+            src={currentUser?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80'}
+            alt={currentUser?.name || 'User'}
             className="w-24 h-24 sm:w-28 sm:h-28 rounded-3xl object-cover ring-4 ring-brand-teal-600 shadow-lg"
           />
 
           <div className="flex-1 text-center sm:text-left space-y-2">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
-                <h1 className="text-2xl sm:text-3xl font-black text-slate-900">{currentUser.name}</h1>
-                <p className="text-xs text-brand-teal-800 font-bold mt-0.5">Verified Citizen & Community Impact Champion</p>
+                <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">{currentUser?.name || 'Citizen'}</h1>
+                <p className="text-xs text-brand-teal-800 dark:text-brand-mint-300 font-bold mt-0.5">Verified Citizen & Community Impact Champion</p>
               </div>
 
               <div className="flex flex-wrap gap-1.5 justify-center sm:justify-start">
-                {currentUser.badges?.map((b, i) => (
+                {currentUser?.badges?.map((b, i) => (
                   <span
                     key={i}
-                    className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-brand-teal-50 text-brand-teal-900 border border-brand-teal-200 text-xs font-bold shadow-sm"
+                    className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-brand-teal-50 dark:bg-brand-teal-950/60 text-brand-teal-900 dark:text-brand-mint-300 border border-brand-teal-200 dark:border-brand-teal-800 text-xs font-bold shadow-sm"
                   >
                     <Award className="w-3.5 h-3.5 text-brand-amber-500" />
                     <span>{b}</span>
@@ -61,43 +61,43 @@ export default function UserProfile() {
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-4 text-xs text-slate-600 justify-center sm:justify-start pt-2">
+            <div className="flex flex-wrap gap-4 text-xs text-slate-600 dark:text-slate-400 justify-center sm:justify-start pt-2">
               <span className="flex items-center gap-1.5">
                 <Mail className="w-4 h-4 text-slate-400" />
-                {currentUser.email}
+                {currentUser?.email || 'N/A'}
               </span>
               <span className="flex items-center gap-1.5">
                 <Phone className="w-4 h-4 text-slate-400" />
-                {currentUser.phone}
+                {currentUser?.phone || 'N/A'}
               </span>
               <span className="flex items-center gap-1.5">
                 <MapPin className="w-4 h-4 text-slate-400" />
-                {currentUser.location}
+                {currentUser?.location || 'India'}
               </span>
             </div>
           </div>
         </div>
 
         {/* Impact Numbers Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8 pt-6 border-t border-slate-100">
-          <div className="p-4 rounded-2xl bg-brand-teal-50/70 border border-brand-teal-100 text-center">
-            <div className="text-2xl sm:text-3xl font-black text-brand-teal-900">₹{currentUser.totalDonated.toLocaleString()}</div>
-            <div className="text-xs font-bold text-brand-teal-700 mt-1">Total Donations (80G)</div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8 pt-6 border-t border-slate-100 dark:border-slate-800">
+          <div className="p-4 rounded-2xl bg-brand-teal-50/70 dark:bg-brand-teal-950/40 border border-brand-teal-100 dark:border-brand-teal-800 text-center">
+            <div className="text-2xl sm:text-3xl font-black text-brand-teal-900 dark:text-brand-mint-300">₹{(currentUser?.totalDonated || 0).toLocaleString()}</div>
+            <div className="text-xs font-bold text-brand-teal-700 dark:text-brand-mint-400 mt-1">Total Donations (80G)</div>
           </div>
 
-          <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-100 text-center">
-            <div className="text-2xl sm:text-3xl font-black text-brand-amber-700">{currentUser.volunteerHours} hrs</div>
-            <div className="text-xs font-bold text-brand-amber-800 mt-1">Volunteer Hours Logged</div>
+          <div className="p-4 rounded-2xl bg-amber-50/70 dark:bg-amber-950/40 border border-amber-100 dark:border-amber-800 text-center">
+            <div className="text-2xl sm:text-3xl font-black text-brand-amber-700 dark:text-brand-amber-400">{currentUser?.volunteerHours || 0} hrs</div>
+            <div className="text-xs font-bold text-brand-amber-800 dark:text-amber-300 mt-1">Volunteer Hours Logged</div>
           </div>
 
-          <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-100 text-center">
-            <div className="text-2xl sm:text-3xl font-black text-emerald-900">{userIncidents.length}</div>
-            <div className="text-xs font-bold text-emerald-800 mt-1">Incidents Reported</div>
+          <div className="p-4 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-800 text-center">
+            <div className="text-2xl sm:text-3xl font-black text-emerald-900 dark:text-emerald-300">{userIncidents.length}</div>
+            <div className="text-xs font-bold text-emerald-800 dark:text-emerald-400 mt-1">Incidents Reported</div>
           </div>
 
-          <div className="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-100 text-center">
-            <div className="text-2xl sm:text-3xl font-black text-indigo-900">{bookmarkedAdoptions.length}</div>
-            <div className="text-xs font-bold text-indigo-800 mt-1">Adoption Bookmarks</div>
+          <div className="p-4 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-800 text-center">
+            <div className="text-2xl sm:text-3xl font-black text-indigo-900 dark:text-indigo-300">{bookmarkedAdoptions.length}</div>
+            <div className="text-xs font-bold text-indigo-800 dark:text-indigo-400 mt-1">Adoption Bookmarks</div>
           </div>
         </div>
       </div>
