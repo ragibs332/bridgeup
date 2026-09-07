@@ -6,7 +6,7 @@ import Chatbot from './components/common/Chatbot';
 import QuickRoleSwitch from './components/common/QuickRoleSwitch';
 import ToastContainer from './components/common/ToastContainer';
 import MobileBottomNav from './components/common/MobileBottomNav';
-import UnifiedLoginLanding from './components/auth/UnifiedLoginLanding';
+import HomeLanding from './components/home/HomeLanding';
 import Ambient3DBackground from './components/3d/Ambient3DBackground';
 
 // User Views
@@ -46,9 +46,9 @@ function MainContent() {
       {/* Ambient 3D Floating Geometry Atmosphere */}
       <Ambient3DBackground />
 
-      {/* If Guest, render Login Page with Demo Login options */}
+      {/* If Guest, render World-Class Professional Home & Landing Portal */}
       {currentRole === 'guest' ? (
-        <UnifiedLoginLanding />
+        <HomeLanding />
       ) : (
         <>
           {/* Top Main Navbar with Left 3-Pin Pattern Trigger for All Roles */}
