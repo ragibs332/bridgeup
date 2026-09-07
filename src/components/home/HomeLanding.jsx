@@ -229,53 +229,96 @@ export default function HomeLanding() {
               BridgeUp unites conscious citizens, accredited grassroots NGOs, and platform governance to deliver rapid emergency distress dispatch, legal child & elder adoptions, and transparent 80G tax-exempt donations.
             </p>
 
-            {/* Main Action Buttons */}
-            <div className="flex flex-wrap items-center justify-center lg:justify-start gap-3 pt-2">
-              <button
-                onClick={() => openAuthWithRole('user', 'signup')}
-                className="px-6 py-3.5 rounded-2xl bg-brand-teal-800 hover:bg-brand-teal-700 text-white font-extrabold text-sm shadow-xl shadow-brand-teal-900/20 hover:scale-105 transition-all flex items-center gap-2"
-              >
-                <span>Enter Citizen Portal</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
+            {/* Main 3 Portal Action Buttons */}
+            <div className="space-y-3 pt-2">
+              <div className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-center lg:text-left">
+                Select Your Portal to Enter:
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                {/* 1. Citizen Portal */}
+                <button
+                  onClick={() => openAuthWithRole('user', 'login')}
+                  className="p-3.5 rounded-2xl bg-brand-teal-800 hover:bg-brand-teal-700 text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-brand-teal-900/20 hover:scale-[1.02] transition-all flex items-center justify-between group"
+                >
+                  <div className="flex items-center gap-2">
+                    <User className="w-4 h-4 text-brand-mint-300" />
+                    <span>Citizen Portal</span>
+                  </div>
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </button>
 
-              <button
-                onClick={() => openAuthWithRole('user', 'login')}
-                className="px-5 py-3.5 rounded-2xl bg-white dark:bg-slate-800 text-slate-800 dark:text-white border border-slate-200 dark:border-slate-700 font-bold text-sm shadow-sm hover:border-brand-teal-600 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all flex items-center gap-2"
-              >
-                <AlertTriangle className="w-4 h-4 text-brand-amber-500" />
-                <span>Report Emergency Distress</span>
-              </button>
+                {/* 2. NGO Org Portal */}
+                <button
+                  onClick={() => openAuthWithRole('ngo', 'login')}
+                  className="p-3.5 rounded-2xl bg-emerald-700 hover:bg-emerald-600 text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-emerald-900/20 hover:scale-[1.02] transition-all flex items-center justify-between group"
+                >
+                  <div className="flex items-center gap-2">
+                    <Building2 className="w-4 h-4 text-emerald-200" />
+                    <span>NGO Org</span>
+                  </div>
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </button>
+
+                {/* 3. Super Admin Portal */}
+                <button
+                  onClick={() => openAuthWithRole('admin', 'login')}
+                  className="p-3.5 rounded-2xl bg-brand-amber-600 hover:bg-brand-amber-500 text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-amber-900/20 hover:scale-[1.02] transition-all flex items-center justify-between group"
+                >
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-amber-200" />
+                    <span>Super Admin</span>
+                  </div>
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </button>
+              </div>
+
+              {/* Emergency Distress & Register shortcuts */}
+              <div className="flex flex-wrap items-center justify-center lg:justify-start gap-2.5 pt-1">
+                <button
+                  onClick={() => openAuthWithRole('user', 'login')}
+                  className="px-4 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/50 text-brand-amber-700 dark:text-brand-amber-300 border border-brand-amber-200 dark:border-brand-amber-800/60 font-bold text-xs hover:bg-amber-100 transition-all flex items-center gap-1.5"
+                >
+                  <AlertTriangle className="w-3.5 h-3.5 text-brand-amber-500" />
+                  <span>Report Emergency Distress</span>
+                </button>
+                <button
+                  onClick={() => openAuthWithRole('user', 'signup')}
+                  className="px-4 py-2 rounded-xl bg-white dark:bg-slate-800 text-brand-teal-800 dark:text-brand-mint-300 border border-slate-200 dark:border-slate-700 font-bold text-xs hover:bg-slate-50 dark:hover:bg-slate-700 transition-all flex items-center gap-1.5"
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  <span>Create Citizen Account</span>
+                </button>
+              </div>
             </div>
 
             {/* Quick 1-Click Demo Shortcut Strip */}
             <div className="pt-4 border-t border-slate-200 dark:border-slate-800/80">
               <div className="flex items-center justify-center lg:justify-start gap-2 mb-2">
                 <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                  ⚡ 1-Click Instant Demo Portals:
+                  ⚡ 1-Click Instant Demo Portals (No Password):
                 </span>
               </div>
               <div className="flex flex-wrap items-center justify-center lg:justify-start gap-2">
                 <button
                   onClick={() => loginAsUser()}
-                  className="px-3 py-1.5 rounded-xl bg-brand-teal-50 dark:bg-brand-teal-950/60 text-brand-teal-900 dark:text-brand-mint-300 border border-brand-teal-200 dark:border-brand-teal-800 text-xs font-bold hover:bg-brand-teal-100 transition-all flex items-center gap-1.5"
+                  className="px-3 py-1.5 rounded-xl bg-brand-teal-50 dark:bg-brand-teal-950/60 text-brand-teal-900 dark:text-brand-mint-300 border border-brand-teal-200 dark:border-brand-teal-800 text-xs font-bold hover:bg-brand-teal-100 dark:hover:bg-brand-teal-900 transition-all flex items-center gap-1.5"
                 >
                   <User className="w-3.5 h-3.5" />
-                  <span>Citizen User</span>
+                  <span>Demo Citizen</span>
                 </button>
                 <button
                   onClick={() => loginAsNgo(currentNgo || ngos[0])}
-                  className="px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-900 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-bold hover:bg-emerald-100 transition-all flex items-center gap-1.5"
+                  className="px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-900 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-bold hover:bg-emerald-100 dark:hover:bg-emerald-900 transition-all flex items-center gap-1.5"
                 >
                   <Building2 className="w-3.5 h-3.5" />
-                  <span>NGO Organization</span>
+                  <span>Demo NGO Org</span>
                 </button>
                 <button
                   onClick={() => loginAsAdmin()}
-                  className="px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-900 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-xs font-bold hover:bg-amber-100 transition-all flex items-center gap-1.5"
+                  className="px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-900 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-xs font-bold hover:bg-amber-100 dark:hover:bg-amber-900 transition-all flex items-center gap-1.5"
                 >
                   <ShieldCheck className="w-3.5 h-3.5" />
-                  <span>Super Admin</span>
+                  <span>Demo Admin</span>
                 </button>
               </div>
             </div>
