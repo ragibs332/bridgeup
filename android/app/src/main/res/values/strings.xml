@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">BridgeUp</string>
+    <string name="title_activity_main">BridgeUp</string>
+    <string name="package_name">org.bridgeup.app</string>
+    <string name="custom_url_scheme">org.bridgeup.app</string>
+</resources>

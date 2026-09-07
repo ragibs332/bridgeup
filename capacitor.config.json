@@ -1,0 +1,12 @@
+{
+  "appId": "org.bridgeup.app",
+  "appName": "BridgeUp",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}
