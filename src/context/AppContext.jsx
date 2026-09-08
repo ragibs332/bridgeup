@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import {
   initialNgos,
   initialIncidents,
@@ -10,8 +10,9 @@ import {
 } from '../data/mockData';
 import { safeGetItem, safeSetItem, safeRemoveItem } from '../utils/storage';
 import {
-  pullFromCloud,
-  pushFullStateToCloud,
+  initRealtimeWebSocket,
+  fetchCatchUpEvents,
+  broadcastCloudEvent,
   subscribeToCloudSync,
   mergeEntities
 } from '../services/cloudSync';
@@ -176,68 +177,161 @@ export const AppProvider = ({ children }) => {
     safeSetItem('bridgeup_disputes', disputes);
   }, [disputes]);
 
-  // Keep state ref for background cloud sync pushes
-  const stateRef = useRef({ incidents, ngos, registeredUsers, adoptions, campaigns, requirements });
-  useEffect(() => {
-    stateRef.current = { incidents, ngos, registeredUsers, adoptions, campaigns, requirements };
-  }, [incidents, ngos, registeredUsers, adoptions, campaigns, requirements]);
+  // Apply a remote cloud event to local state
+  const handleCloudEvent = useCallback((event) => {
+    if (!event || !event.type) return;
 
-  // Manual Trigger to Pull Cloud Updates
+    setIsCloudSynced(true);
+    setLastSyncedAt(new Date());
+
+    switch (event.type) {
+      case 'INCIDENT_REPORTED':
+        if (event.payload && event.payload.id) {
+          setIncidents(prev => {
+            const exists = prev.some(i => i.id === event.payload.id);
+            if (exists) return prev;
+            return [event.payload, ...prev];
+          });
+        }
+        break;
+
+      case 'INCIDENT_ASSIGNED':
+      case 'INCIDENT_MODERATED':
+        if (event.payload && event.payload.id) {
+          setIncidents(prev => prev.map(inc => (inc.id === event.payload.id ? { ...inc, ...event.payload } : inc)));
+        }
+        break;
+
+      case 'INCIDENT_RESOLVED':
+        if (event.payload && event.payload.id) {
+          setIncidents(prev => prev.map(inc => (inc.id === event.payload.id ? { ...inc, ...event.payload } : inc)));
+          if (event.payload.assignedNgoId) {
+            setNgos(prev => prev.map(n => {
+              if (n.id === event.payload.assignedNgoId) {
+                return {
+                  ...n,
+                  stats: { ...n.stats, incidentsResolved: (n.stats?.incidentsResolved || 0) + 1 }
+                };
+              }
+              return n;
+            }));
+          }
+        }
+        break;
+
+      case 'USER_REGISTERED':
+        if (event.payload && event.payload.id) {
+          setRegisteredUsers(prev => {
+            const exists = prev.some(u => u.id === event.payload.id || u.username === event.payload.username);
+            if (exists) return prev;
+            return [event.payload, ...prev];
+          });
+        }
+        break;
+
+      case 'NGO_REGISTERED':
+        if (event.payload && event.payload.id) {
+          setNgos(prev => {
+            const exists = prev.some(n => n.id === event.payload.id);
+            if (exists) return prev;
+            return [...prev, event.payload];
+          });
+        }
+        break;
+
+      case 'NGO_VERIFIED':
+        if (event.payload && event.payload.ngoId) {
+          setNgos(prev => prev.map(n => {
+            if (n.id === event.payload.ngoId) {
+              return { ...n, ...event.payload };
+            }
+            return n;
+          }));
+        }
+        break;
+
+      case 'ADOPTION_ADDED':
+        if (event.payload && event.payload.id) {
+          setAdoptions(prev => {
+            const exists = prev.some(a => a.id === event.payload.id);
+            if (exists) return prev;
+            return [event.payload, ...prev];
+          });
+        }
+        break;
+
+      case 'DONATION_MADE':
+        if (event.payload) {
+          if (event.payload.campaignId) {
+            setCampaigns(prev => prev.map(c => {
+              if (c.id === event.payload.campaignId) {
+                return {
+                  ...c,
+                  raisedAmount: c.raisedAmount + event.payload.amount,
+                  donorsCount: c.donorsCount + 1
+                };
+              }
+              return c;
+            }));
+          }
+        }
+        break;
+
+      case 'REQUIREMENT_POSTED':
+        if (event.payload && event.payload.id) {
+          setRequirements(prev => {
+            const exists = prev.some(r => r.id === event.payload.id);
+            if (exists) return prev;
+            return [event.payload, ...prev];
+          });
+        }
+        break;
+
+      case 'REQUIREMENT_CONTRIBUTED':
+        if (event.payload && event.payload.reqId) {
+          setRequirements(prev => prev.map(r => {
+            if (r.id === event.payload.reqId) {
+              return {
+                ...r,
+                raisedValue: Math.min(r.targetValue, r.raisedValue + event.payload.amount)
+              };
+            }
+            return r;
+          }));
+        }
+        break;
+
+      default:
+        break;
+    }
+  }, []);
+
+  // Manual Sync trigger to fetch catch-up events
   const triggerManualSync = useCallback(async () => {
     setIsSyncing(true);
     try {
-      const remoteData = await pullFromCloud();
-      if (remoteData) {
-        if (remoteData.incidents && Array.isArray(remoteData.incidents) && remoteData.incidents.length > 0) {
-          setIncidents(prev => mergeEntities(prev, remoteData.incidents));
-        }
-        if (remoteData.ngos && Array.isArray(remoteData.ngos) && remoteData.ngos.length > 0) {
-          setNgos(prev => mergeEntities(prev, remoteData.ngos));
-        }
-        if (remoteData.registeredUsers && Array.isArray(remoteData.registeredUsers) && remoteData.registeredUsers.length > 0) {
-          setRegisteredUsers(prev => mergeEntities(prev, remoteData.registeredUsers));
-        }
-        if (remoteData.adoptions && Array.isArray(remoteData.adoptions) && remoteData.adoptions.length > 0) {
-          setAdoptions(prev => mergeEntities(prev, remoteData.adoptions));
-        }
-        if (remoteData.campaigns && Array.isArray(remoteData.campaigns) && remoteData.campaigns.length > 0) {
-          setCampaigns(prev => mergeEntities(prev, remoteData.campaigns));
-        }
-        if (remoteData.requirements && Array.isArray(remoteData.requirements) && remoteData.requirements.length > 0) {
-          setRequirements(prev => mergeEntities(prev, remoteData.requirements));
-        }
+      const pastEvents = await fetchCatchUpEvents();
+      if (Array.isArray(pastEvents) && pastEvents.length > 0) {
+        pastEvents.forEach(handleCloudEvent);
       }
       setIsCloudSynced(true);
       setLastSyncedAt(new Date());
     } catch (e) {
-      console.warn('Manual sync note:', e);
+      console.warn('Sync note:', e);
     } finally {
       setIsSyncing(false);
     }
-  }, []);
+  }, [handleCloudEvent]);
 
-  // Continuous Cross-Device Live Cloud Sync Polling (every 3.5 seconds)
+  // Connect WebSocket & subscribe to real-time events
   useEffect(() => {
-    // Initial fetch on app start
+    initRealtimeWebSocket();
     triggerManualSync();
 
-    // Auto-poll interval
-    const interval = setInterval(() => {
-      pullFromCloud().then(remoteData => {
-        if (remoteData) {
-          if (remoteData.incidents?.length) setIncidents(prev => mergeEntities(prev, remoteData.incidents));
-          if (remoteData.ngos?.length) setNgos(prev => mergeEntities(prev, remoteData.ngos));
-          if (remoteData.registeredUsers?.length) setRegisteredUsers(prev => mergeEntities(prev, remoteData.registeredUsers));
-          if (remoteData.adoptions?.length) setAdoptions(prev => mergeEntities(prev, remoteData.adoptions));
-          if (remoteData.campaigns?.length) setCampaigns(prev => mergeEntities(prev, remoteData.campaigns));
-          if (remoteData.requirements?.length) setRequirements(prev => mergeEntities(prev, remoteData.requirements));
-          setIsCloudSynced(true);
-          setLastSyncedAt(new Date());
-        }
-      }).catch(() => {});
-    }, 3500);
+    const unsubscribe = subscribeToCloudSync((event) => {
+      handleCloudEvent(event);
+    });
 
-    // Sync when tab is active / user returns to browser
     const onVisibilityChange = () => {
       if (!document.hidden) {
         triggerManualSync();
@@ -246,30 +340,14 @@ export const AppProvider = ({ children }) => {
     document.addEventListener('visibilitychange', onVisibilityChange);
     window.addEventListener('focus', onVisibilityChange);
 
-    // Sync listener for local cross-tab updates
-    const unsubscribe = subscribeToCloudSync((update) => {
-      if (update?.type === 'FULL_SYNC' && update?.payload) {
-        const payload = update.payload;
-        if (payload.incidents) setIncidents(prev => mergeEntities(prev, payload.incidents));
-        if (payload.ngos) setNgos(prev => mergeEntities(prev, payload.ngos));
-        if (payload.registeredUsers) setRegisteredUsers(prev => mergeEntities(prev, payload.registeredUsers));
-        if (payload.adoptions) setAdoptions(prev => mergeEntities(prev, payload.adoptions));
-        if (payload.campaigns) setCampaigns(prev => mergeEntities(prev, payload.campaigns));
-        if (payload.requirements) setRequirements(prev => mergeEntities(prev, payload.requirements));
-        setIsCloudSynced(true);
-        setLastSyncedAt(new Date());
-      }
-    });
-
     return () => {
-      clearInterval(interval);
+      unsubscribe();
       document.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener('focus', onVisibilityChange);
-      unsubscribe();
     };
-  }, [triggerManualSync]);
+  }, [handleCloudEvent, triggerManualSync]);
 
-  // Real Authentication Engine (Sign Up & Sign In with Username / Password)
+  // Real Authentication Engine
   const registerUser = ({ username, email, password, name, phone, location }) => {
     const existing = registeredUsers.find(
       u => u.username?.toLowerCase() === username.toLowerCase() || u.email?.toLowerCase() === email.toLowerCase()
@@ -295,22 +373,18 @@ export const AppProvider = ({ children }) => {
       badges: ['New Citizen', 'Verified Explorer'],
       savedAdoptions: [],
       donationHistory: [],
-      updatedAt: Date.now()
+      createdAt: new Date().toISOString()
     };
 
-    const updatedUsers = [newUser, ...registeredUsers];
-    setRegisteredUsers(updatedUsers);
+    setRegisteredUsers(prev => [newUser, ...prev]);
     setCurrentUser(newUser);
     setCurrentRole('user');
     setActiveUserTab('dashboard');
 
-    // Push to global cloud
-    pushFullStateToCloud({
-      ...stateRef.current,
-      registeredUsers: updatedUsers
-    });
+    // Broadcast globally via real-time cloud WebSocket
+    broadcastCloudEvent('USER_REGISTERED', newUser);
 
-    addToast('Account Created! 🎉', `Welcome to BridgeUp, ${newUser.name}! Your account is now active across all devices.`, 'success');
+    addToast('Account Created! 🎉', `Welcome to BridgeUp, ${newUser.name}! Your account is now synchronized across all devices.`, 'success');
     return { success: true, user: newUser };
   };
 
@@ -379,9 +453,9 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  // --- ACTIONS ---
+  // --- ACTIONS (Real-Time Cloud Synced via WebSocket) ---
 
-  // 1. INCIDENTS WORKFLOW (Real-Time Cloud Synced)
+  // 1. INCIDENTS WORKFLOW
   const reportIncident = (incidentData) => {
     const newIncident = {
       id: `inc-${Date.now().toString().slice(-4)}`,
@@ -397,7 +471,6 @@ export const AppProvider = ({ children }) => {
       reporterEmail: currentUser?.email || incidentData.reporterEmail || 'citizen@bridgeup.org',
       reporterPhone: currentUser?.phone || incidentData.reporterPhone || '+91 98000 00000',
       createdAt: new Date().toISOString(),
-      updatedAt: Date.now(),
       assignedNgoId: null,
       assignedNgoName: null,
       resolutionNotes: null,
@@ -405,75 +478,53 @@ export const AppProvider = ({ children }) => {
       resolvedAt: null
     };
 
-    const updatedIncidents = [newIncident, ...incidents];
-    setIncidents(updatedIncidents);
+    setIncidents(prev => [newIncident, ...prev]);
 
-    // Broadcast & Push to persistent Global Cloud API immediately
-    pushFullStateToCloud({
-      ...stateRef.current,
-      incidents: updatedIncidents
-    });
+    // Instant Global Push to ALL connected devices worldwide
+    broadcastCloudEvent('INCIDENT_REPORTED', newIncident);
 
-    addToast('Incident Reported & Cloud Synced! 🚀', 'Your report has been broadcasted in real-time to all phones, PCs, and registered NGOs.', 'success');
+    addToast('Incident Reported & Cloud Synced! 🚀', 'Your report has been broadcasted in real time to all phones and PC browsers.', 'success');
     return newIncident;
   };
 
   const assignIncidentToNgo = (incidentId, ngo) => {
-    const updatedIncidents = incidents.map(inc => {
-      if (inc.id === incidentId) {
-        return {
-          ...inc,
-          status: 'In Progress',
-          assignedNgoId: ngo.id,
-          assignedNgoName: ngo.name,
-          updatedAt: Date.now()
-        };
-      }
-      return inc;
-    });
+    const updateData = {
+      id: incidentId,
+      status: 'In Progress',
+      assignedNgoId: ngo.id,
+      assignedNgoName: ngo.name
+    };
 
-    setIncidents(updatedIncidents);
-    pushFullStateToCloud({
-      ...stateRef.current,
-      incidents: updatedIncidents
-    });
+    setIncidents(prev => prev.map(inc => (inc.id === incidentId ? { ...inc, ...updateData } : inc)));
+    broadcastCloudEvent('INCIDENT_ASSIGNED', updateData);
     addToast('Incident Assigned', `Incident has been assigned to ${ngo.name}`, 'info');
   };
 
   const resolveIncident = (incidentId, resolutionDetails) => {
-    const updatedIncidents = incidents.map(inc => {
-      if (inc.id === incidentId) {
-        return {
-          ...inc,
-          status: 'Resolved',
-          assignedNgoId: currentNgo.id,
-          assignedNgoName: currentNgo.name,
-          resolutionNotes: resolutionDetails.notes,
-          resolutionPhoto: resolutionDetails.photo || 'https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=600&auto=format&fit=crop&q=80',
-          resolvedAt: new Date().toISOString(),
-          updatedAt: Date.now()
-        };
-      }
-      return inc;
-    });
+    const updateData = {
+      id: incidentId,
+      status: 'Resolved',
+      assignedNgoId: currentNgo.id,
+      assignedNgoName: currentNgo.name,
+      resolutionNotes: resolutionDetails.notes,
+      resolutionPhoto: resolutionDetails.photo || 'https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=600&auto=format&fit=crop&q=80',
+      resolvedAt: new Date().toISOString()
+    };
 
-    // Update NGO stats
-    const updatedNgos = ngos.map(n => {
+    setIncidents(prev => prev.map(inc => (inc.id === incidentId ? { ...inc, ...updateData } : inc)));
+
+    setNgos(prev => prev.map(n => {
       if (n.id === currentNgo.id) {
         return {
           ...n,
           stats: {
             ...n.stats,
             incidentsResolved: (n.stats?.incidentsResolved || 0) + 1
-          },
-          updatedAt: Date.now()
+          }
         };
       }
       return n;
-    });
-
-    setIncidents(updatedIncidents);
-    setNgos(updatedNgos);
+    }));
 
     setCurrentNgo(prev => ({
       ...prev,
@@ -483,34 +534,21 @@ export const AppProvider = ({ children }) => {
       }
     }));
 
-    // Push to global cloud
-    pushFullStateToCloud({
-      ...stateRef.current,
-      incidents: updatedIncidents,
-      ngos: updatedNgos
-    });
+    // Broadcast resolution globally
+    broadcastCloudEvent('INCIDENT_RESOLVED', updateData);
 
-    addToast('Incident Marked Resolved! 🎉', 'Resolution proof and notes have been published and synced across all devices.', 'success');
+    addToast('Incident Marked Resolved! 🎉', 'Resolution proof and notes have been synced across all devices.', 'success');
   };
 
   const moderateIncident = (incidentId, action, note) => {
-    const updatedIncidents = incidents.map(inc => {
-      if (inc.id === incidentId) {
-        return {
-          ...inc,
-          status: action === 'flag_spam' ? 'Rejected' : inc.status,
-          adminModerationNote: note || 'Reviewed by Admin',
-          updatedAt: Date.now()
-        };
-      }
-      return inc;
-    });
+    const updateData = {
+      id: incidentId,
+      status: action === 'flag_spam' ? 'Rejected' : 'Reported',
+      adminModerationNote: note || 'Reviewed by Admin'
+    };
 
-    setIncidents(updatedIncidents);
-    pushFullStateToCloud({
-      ...stateRef.current,
-      incidents: updatedIncidents
-    });
+    setIncidents(prev => prev.map(inc => (inc.id === incidentId ? { ...inc, ...updateData } : inc)));
+    broadcastCloudEvent('INCIDENT_MODERATED', updateData);
     addToast('Incident Moderated', `Action "${action}" recorded by Admin.`, 'info');
   };
 
@@ -544,19 +582,14 @@ export const AppProvider = ({ children }) => {
         activeVolunteers: 0,
         childrenAdopted: 0,
         incidentsResolved: 0
-      },
-      updatedAt: Date.now()
+      }
     };
 
-    const updatedNgos = [...ngos, newNgo];
-    setNgos(updatedNgos);
+    setNgos(prev => [...prev, newNgo]);
     setCurrentNgo(newNgo);
     setCurrentRole('ngo');
 
-    pushFullStateToCloud({
-      ...stateRef.current,
-      ngos: updatedNgos
-    });
+    broadcastCloudEvent('NGO_REGISTERED', newNgo);
 
     addToast('NGO Registration Submitted!', 'Your documents are currently under review by Platform Admin.', 'info');
     return newNgo;
@@ -564,13 +597,10 @@ export const AppProvider = ({ children }) => {
 
   const importNgoBatch = (ngoList) => {
     if (!Array.isArray(ngoList) || !ngoList.length) return;
-    const existingIds = new Set(ngos.map(n => n.id));
-    const newItems = ngoList.filter(n => !existingIds.has(n.id));
-    const updated = [...ngos, ...newItems];
-    setNgos(updated);
-    pushFullStateToCloud({
-      ...stateRef.current,
-      ngos: updated
+    setNgos(prev => {
+      const existingIds = new Set(prev.map(n => n.id));
+      const newItems = ngoList.filter(n => !existingIds.has(n.id));
+      return [...prev, ...newItems];
     });
     addToast('NGOs Imported Successfully! 🏢', `Added ${ngoList.length} real NGO records to the database.`, 'success');
   };
@@ -578,46 +608,35 @@ export const AppProvider = ({ children }) => {
   const loadRealNgoDataset = () => {
     setNgos(initialNgos);
     setCurrentNgo(initialNgos[0]);
-    pushFullStateToCloud({
-      ...stateRef.current,
-      ngos: initialNgos
-    });
+    safeSetItem('bridgeup_ngos', initialNgos);
     addToast('Real NGO Dataset Loaded! 🌟', `Loaded ${initialNgos.length} verified real-world NGO records.`, 'success');
   };
 
   const verifyNgo = (ngoId, status, rejectionReason = '') => {
-    const updatedNgos = ngos.map(n => {
+    const updateData = {
+      ngoId,
+      verified: status === 'verified',
+      verificationStatus: status,
+      verificationDate: status === 'verified' ? new Date().toISOString().split('T')[0] : null,
+      verifiedBy: 'Super Admin',
+      rejectionReason: status === 'rejected' ? rejectionReason : null
+    };
+
+    setNgos(prev => prev.map(n => {
       if (n.id === ngoId) {
-        return {
-          ...n,
-          verified: status === 'verified',
-          verificationStatus: status,
-          verificationDate: status === 'verified' ? new Date().toISOString().split('T')[0] : null,
-          verifiedBy: 'Super Admin',
-          rejectionReason: status === 'rejected' ? rejectionReason : null,
-          updatedAt: Date.now()
-        };
+        return { ...n, ...updateData };
       }
       return n;
-    });
-
-    setNgos(updatedNgos);
+    }));
 
     if (currentNgo.id === ngoId) {
       setCurrentNgo(prev => ({
         ...prev,
-        verified: status === 'verified',
-        verificationStatus: status,
-        verificationDate: status === 'verified' ? new Date().toISOString().split('T')[0] : null,
-        verifiedBy: 'Super Admin',
-        rejectionReason: status === 'rejected' ? rejectionReason : null
+        ...updateData
       }));
     }
 
-    pushFullStateToCloud({
-      ...stateRef.current,
-      ngos: updatedNgos
-    });
+    broadcastCloudEvent('NGO_VERIFIED', updateData);
 
     addToast(
       status === 'verified' ? 'NGO Verified! 🛡️' : 'NGO Verification Rejected',
@@ -643,39 +662,22 @@ export const AppProvider = ({ children }) => {
       hobbies: listingData.hobbies || ['Art', 'Reading', 'Music'],
       legalStatus: listingData.legalStatus || 'CARA Safety Protocol Verification Attached',
       addedAt: new Date().toISOString().split('T')[0],
-      inquiries: 0,
-      updatedAt: Date.now()
+      inquiries: 0
     };
 
-    const updatedAdoptions = [newListing, ...adoptions];
-    setAdoptions(updatedAdoptions);
-    pushFullStateToCloud({
-      ...stateRef.current,
-      adoptions: updatedAdoptions
-    });
-
+    setAdoptions(prev => [newListing, ...prev]);
+    broadcastCloudEvent('ADOPTION_ADDED', newListing);
     addToast('Adoption Listing Submitted', 'Sent to Admin queue for safety clearance before public listing.', 'info');
     return newListing;
   };
 
   const approveAdoptionListing = (adoptionId, status) => {
-    const updatedAdoptions = adoptions.map(a => {
+    setAdoptions(prev => prev.map(a => {
       if (a.id === adoptionId) {
-        return {
-          ...a,
-          status: status,
-          updatedAt: Date.now()
-        };
+        return { ...a, status };
       }
       return a;
-    });
-
-    setAdoptions(updatedAdoptions);
-    pushFullStateToCloud({
-      ...stateRef.current,
-      adoptions: updatedAdoptions
-    });
-
+    }));
     addToast(
       status === 'Approved' ? 'Listing Approved for Public View' : 'Listing Rejected',
       `Adoption profile status set to ${status}`,
@@ -684,23 +686,12 @@ export const AppProvider = ({ children }) => {
   };
 
   const submitAdoptionInquiry = (adoptionId, inquiryData) => {
-    const updatedAdoptions = adoptions.map(a => {
+    setAdoptions(prev => prev.map(a => {
       if (a.id === adoptionId) {
-        return {
-          ...a,
-          inquiries: (a.inquiries || 0) + 1,
-          updatedAt: Date.now()
-        };
+        return { ...a, inquiries: (a.inquiries || 0) + 1 };
       }
       return a;
-    });
-
-    setAdoptions(updatedAdoptions);
-    pushFullStateToCloud({
-      ...stateRef.current,
-      adoptions: updatedAdoptions
-    });
-
+    }));
     addToast('Adoption Inquiry Submitted 🕊️', 'The managing NGO has received your contact and will schedule a counselor consultation.', 'success');
   };
 
@@ -714,38 +705,32 @@ export const AppProvider = ({ children }) => {
     let title = campaignRef ? campaignRef.title : 'Direct Support Donation';
     let ngoId = campaignRef ? campaignRef.ngoId : null;
 
-    let updatedCampaigns = campaigns;
     if (campaignRef) {
-      updatedCampaigns = campaigns.map(c => {
+      setCampaigns(prev => prev.map(c => {
         if (c.id === campaignId) {
           return {
             ...c,
             raisedAmount: c.raisedAmount + parsedAmount,
-            donorsCount: c.donorsCount + 1,
-            updatedAt: Date.now()
+            donorsCount: c.donorsCount + 1
           };
         }
         return c;
-      });
-      setCampaigns(updatedCampaigns);
+      }));
     }
 
-    let updatedNgos = ngos;
     if (ngoId) {
-      updatedNgos = ngos.map(n => {
+      setNgos(prev => prev.map(n => {
         if (n.id === ngoId) {
           return {
             ...n,
             stats: {
               ...n.stats,
               totalDonationsRaised: (n.stats?.totalDonationsRaised || 0) + parsedAmount
-            },
-            updatedAt: Date.now()
+            }
           };
         }
         return n;
-      });
-      setNgos(updatedNgos);
+      }));
     }
 
     const newTxn = {
@@ -764,11 +749,7 @@ export const AppProvider = ({ children }) => {
       donationHistory: [newTxn, ...(prev?.donationHistory || [])]
     }));
 
-    pushFullStateToCloud({
-      ...stateRef.current,
-      campaigns: updatedCampaigns,
-      ngos: updatedNgos
-    });
+    broadcastCloudEvent('DONATION_MADE', { campaignId, amount: parsedAmount });
 
     addToast(`Donation of ₹${parsedAmount.toLocaleString()} Successful! ❤️`, `Thank you for supporting ${title}. 80G Tax receipt generated.`);
     return newTxn;
@@ -788,17 +769,10 @@ export const AppProvider = ({ children }) => {
       coverImage: campaignData.coverImage || 'https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=800&auto=format&fit=crop&q=80',
       description: campaignData.description,
       taxBenefit: '80G Tax Exemption (50% deduction)',
-      featured: false,
-      updatedAt: Date.now()
+      featured: false
     };
 
-    const updatedCampaigns = [newCampaign, ...campaigns];
-    setCampaigns(updatedCampaigns);
-    pushFullStateToCloud({
-      ...stateRef.current,
-      campaigns: updatedCampaigns
-    });
-
+    setCampaigns(prev => [newCampaign, ...prev]);
     addToast('Campaign Launched! 🚀', `"${newCampaign.title}" is now live on the donation portal.`);
     return newCampaign;
   };
@@ -815,35 +789,26 @@ export const AppProvider = ({ children }) => {
       raisedValue: 0,
       unit: reqData.unit || '₹ or items',
       location: reqData.location || currentNgo.location,
-      description: reqData.description,
-      updatedAt: Date.now()
+      description: reqData.description
     };
 
-    const updatedRequirements = [newReq, ...requirements];
-    setRequirements(updatedRequirements);
-    pushFullStateToCloud({
-      ...stateRef.current,
-      requirements: updatedRequirements
-    });
-
+    setRequirements(prev => [newReq, ...prev]);
+    broadcastCloudEvent('REQUIREMENT_POSTED', newReq);
     addToast('Urgent Requirement Posted', 'Citizens can now view and fund this directly.', 'info');
     return newReq;
   };
 
   const contributeToRequirement = (reqId, amount) => {
     const parsedAmount = Number(amount);
-    const updatedRequirements = requirements.map(r => {
+    setRequirements(prev => prev.map(r => {
       if (r.id === reqId) {
         return {
           ...r,
-          raisedValue: Math.min(r.targetValue, r.raisedValue + parsedAmount),
-          updatedAt: Date.now()
+          raisedValue: Math.min(r.targetValue, r.raisedValue + parsedAmount)
         };
       }
       return r;
-    });
-
-    setRequirements(updatedRequirements);
+    }));
 
     setCurrentUser(prev => ({
       ...prev,
@@ -851,11 +816,7 @@ export const AppProvider = ({ children }) => {
       donationsCount: (prev?.donationsCount || 0) + 1
     }));
 
-    pushFullStateToCloud({
-      ...stateRef.current,
-      requirements: updatedRequirements
-    });
-
+    broadcastCloudEvent('REQUIREMENT_CONTRIBUTED', { reqId, amount: parsedAmount });
     addToast('Contributed to Urgent Need', `₹${parsedAmount.toLocaleString()} funded toward requirement.`);
   };
 
@@ -911,16 +872,7 @@ export const AppProvider = ({ children }) => {
     setVolunteerDrives(initialVolunteerDrives);
     setDisputes(initialDisputes);
 
-    pushFullStateToCloud({
-      incidents: initialIncidents,
-      ngos: initialNgos,
-      registeredUsers: registeredUsers,
-      adoptions: initialAdoptions,
-      campaigns: initialCampaigns,
-      requirements: initialRequirements
-    });
-
-    addToast('System Reset & Synced', 'All data reverted to default pristine demo state across all devices.');
+    addToast('System Reset', 'All data reverted to default pristine demo state.');
   };
 
   return (
