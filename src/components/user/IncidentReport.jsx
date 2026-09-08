@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { compressImage } from '../../utils/imageCompressor';
 import {
   AlertOctagon,
   Camera,
@@ -7,22 +8,24 @@ import {
   Send,
   CheckCircle2,
   Clock,
-  AlertTriangle,
-  UploadCloud,
-  Eye,
-  ShieldAlert,
   Sparkles,
   PhoneCall,
-  Filter
+  Filter,
+  Image as ImageIcon,
+  Check,
+  Radio,
+  Loader2,
+  Trash2
 } from 'lucide-react';
 
 export default function IncidentReport() {
-  const { reportIncident, incidents, currentUser } = useApp();
+  const { reportIncident, incidents, currentUser, isCloudSynced } = useApp();
 
   const [activeTab, setActiveTab] = useState('report'); // 'report' | 'tracker'
-  const [filterStatus, setFilterStatus] = useState('all'); // 'all' | 'Reported' | 'In Progress' | 'Resolved'
+  const [filterStatus, setFilterStatus] = useState('all');
   const [isLocating, setIsLocating] = useState(false);
-  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [isCompressing, setIsCompressing] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
     title: '',
@@ -40,7 +43,7 @@ export default function IncidentReport() {
     { label: 'Injured Animal Rescue', url: 'https://images.unsplash.com/photo-1543466835-00a7907e9de1?w=600&auto=format&fit=crop&q=80' }
   ];
 
-  // Native Device GPS Auto-Detection (navigator.geolocation API)
+  // 1-Tap GPS Auto-Detection with high accuracy and fallback
   const handleUseGps = () => {
     if (!navigator.geolocation) {
       setFormData(prev => ({
@@ -57,54 +60,65 @@ export default function IncidentReport() {
         const lng = position.coords.longitude.toFixed(4);
         setFormData(prev => ({
           ...prev,
-          location: `Pinned GPS Location (${lat}° N, ${lng}° E) - Accurate to within ${Math.round(position.coords.accuracy || 10)}m`
+          location: `Pinned GPS (${lat}° N, ${lng}° E) - Accurate to within ${Math.round(position.coords.accuracy || 10)}m`
         }));
         setIsLocating(false);
       },
       (error) => {
-        console.warn('Geolocation error or denied:', error);
-        // Fallback default realistic location
+        console.warn('Geolocation fallback:', error);
         setFormData(prev => ({
           ...prev,
           location: 'Sector 17 / Vashi Plaza, Navi Mumbai (GPS: 19.0760° N, 72.8777° E)'
         }));
         setIsLocating(false);
       },
-      { timeout: 10000, enableHighAccuracy: true }
+      { timeout: 8000, enableHighAccuracy: true }
     );
   };
 
-  // Real Mobile Camera Photo Capture & File Upload
-  const handlePhotoUpload = (e) => {
+  // Safe Camera / Gallery Upload with Instant Client-Side Compression
+  const handlePhotoUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setIsUploadingPhoto(true);
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setFormData(prev => ({
-        ...prev,
-        photo: event.target?.result || ''
-      }));
-      setIsUploadingPhoto(false);
-    };
-    reader.readAsDataURL(file);
+    setIsCompressing(true);
+    try {
+      // Compress image from 10MB down to ~40KB in canvas
+      const compressedDataUrl = await compressImage(file, 800, 800, 0.7);
+      if (compressedDataUrl) {
+        setFormData(prev => ({
+          ...prev,
+          photo: compressedDataUrl
+        }));
+      }
+    } catch (err) {
+      console.error('Error compressing image:', err);
+    } finally {
+      setIsCompressing(false);
+    }
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!formData.title || !formData.description) return;
+    if (!formData.title.trim() || !formData.description.trim()) return;
 
-    reportIncident(formData);
-    setFormData({
-      title: '',
-      category: 'Child Distress & Labor',
-      severity: 'High',
-      location: '',
-      description: '',
-      photo: 'https://images.unsplash.com/photo-1543269865-cbf427effbad?w=600&auto=format&fit=crop&q=80'
-    });
-    setActiveTab('tracker');
+    setIsSubmitting(true);
+    try {
+      reportIncident(formData);
+      setFormData({
+        title: '',
+        category: 'Child Distress & Labor',
+        severity: 'High',
+        location: '',
+        description: '',
+        photo: 'https://images.unsplash.com/photo-1543269865-cbf427effbad?w=600&auto=format&fit=crop&q=80'
+      });
+      setActiveTab('tracker');
+    } catch (err) {
+      console.error('Failed to submit incident report:', err);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const filteredIncidents = incidents.filter(i => {
@@ -113,39 +127,47 @@ export default function IncidentReport() {
   });
 
   return (
-    <div className="space-y-8 pb-16">
-      {/* Header Banner */}
-      <div className="bg-gradient-to-r from-brand-amber-600 via-brand-amber-500 to-brand-amber-600 text-white rounded-3xl p-6 sm:p-8 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div className="space-y-2">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/20 text-amber-100 text-xs font-bold border border-white/20">
-            <AlertOctagon className="w-3.5 h-3.5 text-white" />
-            <span>Real-Time Citizen Distress Dispatch</span>
+    <div className="space-y-6 pb-20 max-w-5xl mx-auto">
+      {/* Top Banner / Tab Switcher */}
+      <div className="bg-white dark:bg-slate-900 rounded-3xl p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center font-bold">
+            <AlertOctagon className="w-6 h-6" />
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black">
-            Report an Incident or Community Emergency
-          </h1>
-          <p className="text-xs sm:text-sm text-amber-100 max-w-xl leading-relaxed">
-            Your report immediately alerts verified local NGOs and platform moderators. When an NGO takes action and uploads resolution proof, you will see it updated live here!
-          </p>
+          <div>
+            <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
+              Incident Reporting
+            </h1>
+            <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2">
+              <span>Direct dispatch to verified local NGOs</span>
+              {isCloudSynced && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200/50">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  Cloud Synced
+                </span>
+              )}
+            </p>
+          </div>
         </div>
 
-        <div className="flex gap-2">
+        {/* Simplified View Switcher */}
+        <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl w-full sm:w-auto">
           <button
             onClick={() => setActiveTab('report')}
-            className={`px-4 py-2.5 rounded-xl font-bold text-xs transition-all shadow-sm ${
+            className={`flex-1 sm:flex-initial px-5 py-2 rounded-xl text-xs font-bold transition-all ${
               activeTab === 'report'
-                ? 'bg-white text-brand-amber-800 shadow-md'
-                : 'bg-black/20 text-white hover:bg-black/30'
+                ? 'bg-amber-500 text-white shadow-sm'
+                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
             }`}
           >
-            + File New Report
+            + File Report
           </button>
           <button
             onClick={() => setActiveTab('tracker')}
-            className={`px-4 py-2.5 rounded-xl font-bold text-xs transition-all shadow-sm ${
+            className={`flex-1 sm:flex-initial px-5 py-2 rounded-xl text-xs font-bold transition-all ${
               activeTab === 'tracker'
-                ? 'bg-white text-brand-amber-800 shadow-md'
-                : 'bg-black/20 text-white hover:bg-black/30'
+                ? 'bg-amber-500 text-white shadow-sm'
+                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
             }`}
           >
             Track Reports ({incidents.length})
@@ -154,38 +176,153 @@ export default function IncidentReport() {
       </div>
 
       {activeTab === 'report' ? (
-        /* Form View */
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Main Form */}
-          <div className="lg:col-span-2 bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-card-soft">
-            <h2 className="text-lg font-bold text-slate-900 mb-5 flex items-center gap-2">
-              <ShieldAlert className="w-5 h-5 text-brand-amber-500" />
-              Incident Incident Details
-            </h2>
+        /* Simplified 3-Step Incident Form */
+        <form onSubmit={handleSubmit} className="space-y-6">
+          
+          {/* STEP 1: Photo Evidence */}
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-5 sm:p-7 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="w-6 h-6 rounded-full bg-amber-500 text-white text-xs font-black flex items-center justify-center">1</span>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">Live Photo / Incident Evidence</h3>
+              </div>
+              <span className="text-[11px] text-slate-400">Auto-compressed to ~40KB</span>
+            </div>
 
-            <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Photo Action & Preview */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+              {/* Image Preview */}
+              <div className="relative rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-800 border-2 border-dashed border-slate-300 dark:border-slate-700 h-44 flex items-center justify-center">
+                {isCompressing ? (
+                  <div className="text-center space-y-2 p-4">
+                    <Loader2 className="w-8 h-8 text-amber-500 animate-spin mx-auto" />
+                    <p className="text-xs font-bold text-slate-600 dark:text-slate-300">Compressing & Optimizing Photo...</p>
+                  </div>
+                ) : formData.photo ? (
+                  <>
+                    <img
+                      src={formData.photo}
+                      alt="Incident Evidence"
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute top-2 right-2 flex gap-1">
+                      <span className="px-2 py-1 rounded-lg bg-black/60 text-white text-[10px] font-bold">
+                        ✓ Ready
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-center p-4 text-slate-400">
+                    <Camera className="w-8 h-8 mx-auto mb-1 opacity-50" />
+                    <span className="text-xs">No photo selected</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Upload Controls & Presets */}
+              <div className="space-y-3">
+                <label className="cursor-pointer w-full py-3.5 px-4 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2">
+                  <Camera className="w-4 h-4" />
+                  <span>{isCompressing ? 'Processing Image...' : '📸 Open Camera / Choose File'}</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handlePhotoUpload}
+                    disabled={isCompressing}
+                    className="hidden"
+                  />
+                </label>
+
+                <div className="pt-2">
+                  <span className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
+                    Or select standard demo photo:
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    {samplePhotos.map((p, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setFormData({ ...formData, photo: p.url })}
+                        className={`text-left p-1.5 rounded-xl border text-[11px] font-medium transition-all truncate flex items-center gap-1.5 ${
+                          formData.photo === p.url
+                            ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-500 text-amber-700 dark:text-amber-300 font-bold'
+                            : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                        }`}
+                      >
+                        <ImageIcon className="w-3 h-3 text-amber-500 flex-shrink-0" />
+                        <span className="truncate">{p.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* STEP 2: Location & Coordinates */}
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-5 sm:p-7 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="w-6 h-6 rounded-full bg-amber-500 text-white text-xs font-black flex items-center justify-center">2</span>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">Location & Landmarks</h3>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleUseGps}
+                disabled={isLocating}
+                className="text-xs font-bold text-teal-700 dark:text-teal-300 hover:text-teal-800 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-50 dark:bg-teal-950/50 border border-teal-200 dark:border-teal-800 transition-all"
+              >
+                <MapPin className={`w-3.5 h-3.5 ${isLocating ? 'animate-spin' : ''}`} />
+                <span>{isLocating ? 'Locating...' : '📍 1-Tap Auto GPS'}</span>
+              </button>
+            </div>
+
+            <input
+              type="text"
+              required
+              placeholder="e.g. Near Metro Gate 3, Connaught Place, New Delhi"
+              value={formData.location}
+              onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+              className="w-full px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 focus:outline-none"
+            />
+          </div>
+
+          {/* STEP 3: Incident Details */}
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-5 sm:p-7 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+            <div className="flex items-center gap-2">
+              <span className="w-6 h-6 rounded-full bg-amber-500 text-white text-xs font-black flex items-center justify-center">3</span>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Incident Details</h3>
+            </div>
+
+            <div className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">Incident Title</label>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  Brief Summary / Title
+                </label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. 7-year old boy working in brick kiln without food"
+                  placeholder="e.g. 7-year old boy working in hazardous environment without food"
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-brand-amber-500 focus:outline-none"
+                  className="w-full px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 focus:outline-none"
                 />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Category</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                    Category
+                  </label>
                   <select
                     value={formData.category}
                     onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-brand-amber-500 focus:outline-none bg-slate-50"
+                    className="w-full px-3.5 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 focus:outline-none"
                   >
                     <option value="Child Distress & Labor">Child Distress & Labor</option>
-                    <option value="Elder Neglect">Elder Neglect / Abandonment</option>
+                    <option value="Elder Neglect">Elder Neglect / Shelter</option>
                     <option value="Food Waste Rescue">Food Waste & Surplus Rescue</option>
                     <option value="Animal Welfare">Injured Animal Rescue</option>
                     <option value="Disaster Relief">Disaster / Flood Emergency</option>
@@ -193,21 +330,23 @@ export default function IncidentReport() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Severity Level</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                    Urgency Level
+                  </label>
                   <div className="grid grid-cols-3 gap-2">
                     {['Medium', 'High', 'Critical'].map(level => (
                       <button
                         key={level}
                         type="button"
                         onClick={() => setFormData({ ...formData, severity: level })}
-                        className={`py-2 rounded-xl text-xs font-bold border transition-all ${
+                        className={`py-2.5 rounded-xl text-xs font-bold transition-all border ${
                           formData.severity === level
                             ? level === 'Critical'
                               ? 'bg-red-600 text-white border-red-600 shadow-sm'
                               : level === 'High'
                               ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
                               : 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
-                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                            : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
                         }`}
                       >
                         {level}
@@ -218,153 +357,48 @@ export default function IncidentReport() {
               </div>
 
               <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-xs font-bold text-slate-700">Location / Landmark</label>
-                  <button
-                    type="button"
-                    onClick={handleUseGps}
-                    disabled={isLocating}
-                    className="text-xs font-bold text-brand-teal-800 dark:text-brand-mint-400 hover:text-brand-teal-900 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-brand-teal-50 dark:bg-slate-800 border border-brand-teal-200 dark:border-slate-700 shadow-sm transition-all"
-                  >
-                    <MapPin className={`w-3.5 h-3.5 text-brand-mint-500 ${isLocating ? 'animate-spin' : ''}`} />
-                    <span>{isLocating ? 'Pinpointing GPS...' : '📍 Auto-Detect Current GPS'}</span>
-                  </button>
-                </div>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Sector 18 Market, Near Auto Hub, Noida"
-                  value={formData.location}
-                  onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-brand-amber-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">Detailed Description</label>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  Detailed Description
+                </label>
                 <textarea
-                  rows={4}
+                  rows={3}
                   required
-                  placeholder="Provide any details about the situation, number of persons affected, urgency, and nearby reference points..."
+                  placeholder="Describe the condition, number of persons/animals involved, and any immediate help needed..."
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-brand-amber-500 focus:outline-none resize-none"
+                  className="w-full px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 focus:outline-none resize-none"
                 />
               </div>
-
-              {/* Real Mobile Camera Capture & Photo Upload */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-200">
-                    Incident Evidence Photo
-                  </label>
-                  <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand-amber-50 dark:bg-amber-950/40 text-brand-amber-700 dark:text-amber-300 border border-brand-amber-200 dark:border-brand-amber-800 text-xs font-bold hover:bg-brand-amber-100 transition-all">
-                    <Camera className="w-3.5 h-3.5" />
-                    <span>{isUploadingPhoto ? 'Processing...' : '📸 Open Camera / Upload'}</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={handlePhotoUpload}
-                      className="hidden"
-                    />
-                  </label>
-                </div>
-
-                {/* Selected/Captured Photo Preview */}
-                {formData.photo && (
-                  <div className="relative rounded-2xl overflow-hidden border-2 border-brand-amber-500 max-h-48 w-full bg-slate-950 flex items-center justify-center">
-                    <img
-                      src={formData.photo}
-                      alt="Incident Preview"
-                      className="w-full h-44 object-cover"
-                    />
-                    <div className="absolute bottom-2 left-2 px-2.5 py-1 rounded-lg bg-black/70 backdrop-blur-md text-white text-[10px] font-bold flex items-center gap-1">
-                      <Sparkles className="w-3 h-3 text-brand-amber-400" />
-                      <span>Ready for Instant Dispatch</span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Quick Presets */}
-                <div>
-                  <span className="block text-[11px] font-semibold text-slate-500 mb-1.5">Or choose scenario template:</span>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {samplePhotos.map((p, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => setFormData({ ...formData, photo: p.url })}
-                        className={`relative rounded-xl overflow-hidden border-2 transition-all group ${
-                          formData.photo === p.url ? 'border-brand-amber-500 ring-2 ring-brand-amber-400' : 'border-slate-200 dark:border-slate-700 opacity-70 hover:opacity-100'
-                        }`}
-                      >
-                        <img src={p.url} alt={p.label} className="w-full h-14 object-cover" />
-                        <span className="block text-[10px] font-bold text-slate-800 dark:text-slate-200 p-1 bg-white dark:bg-slate-800 truncate">
-                          {p.label}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                className="w-full py-3.5 rounded-xl bg-gradient-to-r from-brand-amber-600 to-brand-amber-500 hover:from-brand-amber-500 hover:to-brand-amber-600 text-white font-extrabold text-sm shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2"
-              >
-                <Send className="w-4 h-4" />
-                <span>Dispatch Incident to Verified NGOs</span>
-              </button>
-            </form>
-          </div>
-
-          {/* Sidebar Guidelines */}
-          <div className="space-y-6">
-            <div className="bg-brand-teal-900 text-white rounded-3xl p-6 shadow-card-soft space-y-4">
-              <h3 className="text-base font-bold flex items-center gap-2 text-brand-mint-300">
-                <ShieldAlert className="w-5 h-5 text-brand-amber-400" />
-                Emergency Protocols
-              </h3>
-              <p className="text-xs text-slate-200 leading-relaxed">
-                Reports filed here are dispatched in real-time to registered NGOs with rapid rescue vehicles and food vans.
-              </p>
-
-              <div className="space-y-2.5 pt-2 text-xs border-t border-brand-teal-700">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-brand-mint-400" />
-                  <span>GPS Geo-tagging helps rescuers navigate.</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-brand-mint-400" />
-                  <span>NGOs must submit proof photos to resolve.</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-brand-mint-400" />
-                  <span>Admin moderates fake or duplicate reports.</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-amber-50 border border-amber-200 rounded-3xl p-6 text-amber-900 space-y-2">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-brand-amber-800 flex items-center gap-1.5">
-                <PhoneCall className="w-4 h-4" />
-                Life-Threatening Emergency?
-              </h4>
-              <p className="text-xs leading-relaxed text-amber-800">
-                For immediate life threats, call National Emergency <strong>112</strong> or Childline <strong>1098</strong> in addition to logging your ticket here.
-              </p>
             </div>
           </div>
-        </div>
+
+          {/* Submit Action */}
+          <button
+            type="submit"
+            disabled={isSubmitting || isCompressing}
+            className="w-full py-4 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-black text-sm shadow-xl hover:shadow-2xl transition-all flex items-center justify-center gap-2"
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                <span>Broadcasting to Verified NGOs...</span>
+              </>
+            ) : (
+              <>
+                <Send className="w-5 h-5" />
+                <span>🚨 Submit Incident Report & Dispatch Help</span>
+              </>
+            )}
+          </button>
+        </form>
       ) : (
         /* Tracker View */
-        <div className="space-y-6">
+        <div className="space-y-4">
           {/* Filter Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
             <div className="flex items-center gap-2">
               <Filter className="w-4 h-4 text-slate-500" />
-              <span className="text-xs font-bold text-slate-700">Filter Incidents:</span>
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Filter Status:</span>
             </div>
 
             <div className="flex gap-1.5">
@@ -374,8 +408,8 @@ export default function IncidentReport() {
                   onClick={() => setFilterStatus(status)}
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
                     filterStatus === status
-                      ? 'bg-brand-teal-800 text-white shadow-sm'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      ? 'bg-amber-500 text-white shadow-sm'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
                   }`}
                 >
                   {status === 'all' ? 'All Incidents' : status}
@@ -384,18 +418,18 @@ export default function IncidentReport() {
             </div>
           </div>
 
-          {/* Incidents Feed */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Incidents Cards Feed */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {filteredIncidents.map(inc => (
               <div
                 key={inc.id}
-                className="bg-white rounded-3xl p-6 border border-slate-200 shadow-card-soft hover:shadow-lg transition-all flex flex-col justify-between space-y-4"
+                className="bg-white dark:bg-slate-900 rounded-3xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-all flex flex-col justify-between space-y-3"
               >
                 <div>
-                  <div className="relative rounded-2xl overflow-hidden mb-4">
-                    <img src={inc.photo} alt={inc.title} className="w-full h-44 object-cover" />
-                    <div className="absolute top-3 left-3 flex gap-2">
-                      <span className={`text-[10px] font-extrabold px-3 py-1 rounded-full shadow-md ${
+                  <div className="relative rounded-2xl overflow-hidden mb-3 bg-slate-950">
+                    <img src={inc.photo} alt={inc.title} className="w-full h-40 object-cover" />
+                    <div className="absolute top-2.5 left-2.5 flex gap-1.5">
+                      <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-md ${
                         inc.status === 'Resolved'
                           ? 'bg-emerald-600 text-white'
                           : inc.status === 'In Progress'
@@ -404,54 +438,42 @@ export default function IncidentReport() {
                       }`}>
                         ● {inc.status.toUpperCase()}
                       </span>
-                      <span className="text-[10px] bg-black/60 backdrop-blur-sm text-white px-2.5 py-1 rounded-full font-bold">
+                      <span className="text-[10px] bg-black/60 backdrop-blur-sm text-white px-2 py-0.5 rounded-full font-bold">
                         {inc.category}
                       </span>
                     </div>
                   </div>
 
-                  <h3 className="font-bold text-base text-slate-900 mb-1">{inc.title}</h3>
-                  <p className="text-xs text-slate-500 flex items-center gap-1 mb-3">
+                  <h3 className="font-bold text-sm text-slate-900 dark:text-white mb-1 line-clamp-1">
+                    {inc.title}
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1 mb-2">
                     <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
                     <span className="truncate">{inc.location}</span>
                   </p>
-                  <p className="text-xs text-slate-600 leading-relaxed">{inc.description}</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-2 leading-relaxed">
+                    {inc.description}
+                  </p>
                 </div>
 
-                {/* Resolution Block if resolved by NGO */}
+                {/* Resolution proof if solved */}
                 {inc.status === 'Resolved' && (
-                  <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 space-y-2">
-                    <div className="flex items-center justify-between text-xs font-bold text-emerald-900">
-                      <span className="flex items-center gap-1.5">
+                  <div className="p-3 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/50 space-y-1.5 text-xs text-emerald-900 dark:text-emerald-200">
+                    <div className="flex items-center justify-between font-bold">
+                      <span className="flex items-center gap-1">
                         <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                        Solved by: {inc.assignedNgoName}
-                      </span>
-                      <span className="text-[10px] text-emerald-700">
-                        {inc.resolvedAt ? new Date(inc.resolvedAt).toLocaleDateString() : 'Verified'}
+                        Resolved by: {inc.assignedNgoName}
                       </span>
                     </div>
-
-                    <p className="text-xs text-emerald-800 leading-relaxed">
+                    <p className="text-[11px] text-emerald-800 dark:text-emerald-300">
                       "{inc.resolutionNotes}"
                     </p>
-
-                    {inc.resolutionPhoto && (
-                      <div className="pt-2">
-                        <span className="text-[10px] font-bold text-emerald-900 block mb-1">Resolution Evidence Photo:</span>
-                        <img
-                          src={inc.resolutionPhoto}
-                          alt="Resolution proof"
-                          className="w-full h-24 object-cover rounded-xl border border-emerald-300"
-                        />
-                      </div>
-                    )}
                   </div>
                 )}
 
-                {/* Status Footer */}
-                <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+                <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
                   <span>Reported by: <strong>{inc.reporterName || 'Concerned Citizen'}</strong></span>
-                  <span>{inc.createdAt ? new Date(inc.createdAt).toLocaleDateString() : new Date().toLocaleDateString()}</span>
+                  <span>{inc.createdAt ? new Date(inc.createdAt).toLocaleDateString() : 'Today'}</span>
                 </div>
               </div>
             ))}

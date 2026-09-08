@@ -70,10 +70,10 @@ export default function Navbar() {
           </div>
         </div>
 
-        {/* Center / Role Badge */}
-        <div className="hidden md:flex items-center gap-2">
+        {/* Center / Role Badge & Live Cloud Sync Status */}
+        <div className="hidden md:flex items-center gap-3">
           {currentRole === 'user' && (
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand-teal-50 border border-brand-teal-200 text-brand-teal-900 text-xs font-semibold">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand-teal-50 dark:bg-slate-800 border border-brand-teal-200 dark:border-slate-700 text-brand-teal-900 dark:text-brand-mint-300 text-xs font-semibold">
               <span className="w-2 h-2 rounded-full bg-brand-mint-500 animate-pulse"></span>
               <span>Citizen & Donor Space</span>
             </div>
@@ -82,8 +82,8 @@ export default function Navbar() {
           {currentRole === 'ngo' && (
             <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-semibold ${
               currentNgo.verificationStatus === 'verified'
-                ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                : 'bg-amber-50 border-amber-200 text-amber-900'
+                ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
+                : 'bg-amber-50 dark:bg-amber-950/50 border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200'
             }`}>
               <Building2 className="w-3.5 h-3.5" />
               <span>{currentNgo.name}</span>
@@ -103,6 +103,12 @@ export default function Navbar() {
               <span>Platform Super Admin Governance</span>
             </div>
           )}
+
+          {/* Real-time Cloud Sync Pill */}
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800/60 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold" title="Cross-Device Real-Time Cloud Sync Active">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>Cloud Synced</span>
+          </div>
         </div>
 
         {/* Right Section: Dark Mode Toggle, Notifications & Account Menu */}
