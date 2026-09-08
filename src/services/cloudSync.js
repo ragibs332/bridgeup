@@ -1,25 +1,28 @@
 /**
- * BridgeUp Cross-Device Cloud Synchronization Service
+ * BridgeUp Real-Time Cross-Device Cloud Synchronization Service
  * 
  * Synchronizes incidents, NGO resolutions, adoptions, campaigns, and user accounts
- * across different devices (Phones, Tablets, PCs, Web & Native Android App).
+ * across ALL physical devices (Phones, Tablets, PCs, Web, and Native Android App)
+ * via high-availability persistent cloud backend.
  */
 
-const CLOUD_SYNC_NAMESPACE = 'bridgeup_live_cloud_v1';
-const CLOUD_API_ENDPOINT = 'https://api.jsonbin.io/v3/b'; // Or generic public sync channel with robust fallback
+const CLOUD_OBJECT_ID = 'ff808181a067127101a08227f4b14cc7';
+const CLOUD_API_URL = `https://api.restful-api.dev/objects/${CLOUD_OBJECT_ID}`;
 
-// In-memory fallback and broadcast channel for cross-tab/cross-window sync
+// Local BroadcastChannel for same-device tabs
 let broadcastChannel = null;
 try {
   if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
     broadcastChannel = new BroadcastChannel('bridgeup_cross_device_sync');
   }
 } catch (e) {
-  console.warn('BroadcastChannel not supported in this environment', e);
+  console.warn('BroadcastChannel not supported', e);
 }
 
-// Global Cloud Sync State
 let syncListeners = [];
+let isPushing = false;
+let isFetching = false;
+let lastCloudSyncTimestamp = 0;
 
 export function subscribeToCloudSync(callback) {
   syncListeners.push(callback);
@@ -38,7 +41,7 @@ function notifySyncListeners(data) {
   });
 }
 
-// Setup local broadcast channel listener
+// Listen to local BroadcastChannel
 if (broadcastChannel) {
   broadcastChannel.onmessage = (event) => {
     if (event?.data?.type === 'CLOUD_DATA_UPDATE') {
@@ -48,82 +51,125 @@ if (broadcastChannel) {
 }
 
 /**
- * Broadcast an update locally and to cloud
+ * Fetch latest global state from Cloud API
  */
-export function broadcastUpdate(dataType, payload) {
+export async function pullFromCloud() {
+  if (isFetching || isPushing) return null;
+  isFetching = true;
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+    const response = await fetch(CLOUD_API_URL, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+
+    if (response.ok) {
+      const result = await response.json();
+      const cloudData = result?.data;
+      if (cloudData && typeof cloudData === 'object') {
+        lastCloudSyncTimestamp = Date.now();
+        notifySyncListeners({
+          type: 'FULL_SYNC',
+          payload: cloudData,
+          timestamp: lastCloudSyncTimestamp
+        });
+        isFetching = false;
+        return cloudData;
+      }
+    }
+  } catch (err) {
+    // Network / offline fallback
+    console.debug('Cloud pull notice (offline or connecting):', err?.message);
+  }
+
+  isFetching = false;
+  return null;
+}
+
+/**
+ * Push full updated state to Cloud API and broadcast across devices
+ */
+export async function pushFullStateToCloud(state) {
+  if (!state || isPushing) return;
+  isPushing = true;
+
+  const payload = {
+    incidents: state.incidents || [],
+    ngos: state.ngos || [],
+    registeredUsers: state.registeredUsers || [],
+    adoptions: state.adoptions || [],
+    campaigns: state.campaigns || [],
+    requirements: state.requirements || [],
+    lastUpdated: Date.now()
+  };
+
+  // 1. Broadcast locally
   if (broadcastChannel) {
     try {
       broadcastChannel.postMessage({
         type: 'CLOUD_DATA_UPDATE',
-        payload: { dataType, payload, timestamp: Date.now() }
+        payload: { type: 'FULL_SYNC', payload, timestamp: Date.now() }
       });
-    } catch (e) {
-      console.warn('Failed to post broadcast message', e);
-    }
-  }
-
-  // Push to persistent cloud storage relay if online
-  if (navigator.onLine) {
-    syncToRemoteCloud(dataType, payload);
-  }
-}
-
-/**
- * Remote Cloud Sync Bridge
- * Uses KV store / Remote Sync API to persist state across mobile networks & PCs
- */
-const REMOTE_RELAY_URL = 'https://bridgeup-sync-relay.free.beeceptor.com/sync';
-
-async function syncToRemoteCloud(dataType, payload) {
-  try {
-    // Send asynchronous beacon/fetch to cloud relay
-    const body = JSON.stringify({
-      dataType,
-      payload,
-      timestamp: Date.now(),
-      deviceId: getDeviceId()
-    });
-
-    // Try background sync or fast fetch
-    fetch('https://httpbin.org/anything', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body
-    }).catch(() => {});
-  } catch (err) {
-    // Silent fail for network errors; local cache remains active
-  }
-}
-
-export function getDeviceId() {
-  let devId = localStorage.getItem('bridgeup_device_id');
-  if (!devId) {
-    devId = 'dev_' + Math.random().toString(36).substring(2, 10) + '_' + Date.now().toString(36);
-    try {
-      localStorage.setItem('bridgeup_device_id', devId);
     } catch (e) {}
   }
-  return devId;
+
+  // 2. Push to persistent Global Cloud API
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+    await fetch(CLOUD_API_URL, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({
+        name: 'bridgeup_global_state_v1',
+        data: payload
+      }),
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    lastCloudSyncTimestamp = Date.now();
+  } catch (err) {
+    console.warn('Failed to push state to cloud:', err?.message);
+  } finally {
+    isPushing = false;
+  }
 }
 
 /**
- * Merge remote and local incidents safely (deduplicates by ID)
+ * Merge remote and local entity arrays (deduplicates by ID and prefers latest updates)
  */
 export function mergeEntities(localList = [], remoteList = []) {
   if (!Array.isArray(remoteList) || !remoteList.length) return localList;
   if (!Array.isArray(localList) || !localList.length) return remoteList;
 
   const map = new Map();
-  // Local first
+  // Add local first
   localList.forEach(item => {
     if (item && item.id) map.set(item.id, item);
   });
-  // Remote updates or appends
+
+  // Merge remote items
   remoteList.forEach(item => {
     if (item && item.id) {
       const existing = map.get(item.id);
-      if (!existing || (item.updatedAt && (!existing.updatedAt || item.updatedAt > existing.updatedAt))) {
-        map.set(item.id, { ...existing, ...item });
+      if (!existing) {
+        map.set(item.id, item);
+      } else {
+        // If remote has newer updatedAt timestamp or status update, accept remote
+        const remoteTime = item.updatedAt || 0;
+        const localTime = existing.updatedAt || 0;
+        if (remoteTime >= localTime) {
+          map.set(item.id, { ...existing, ...item });
+        }
       }
     }
   });

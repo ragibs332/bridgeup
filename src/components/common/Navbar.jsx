@@ -33,7 +33,9 @@ export default function Navbar() {
     setActiveUserTab,
     setActiveNgoTab,
     setActiveAdminTab,
-    isCloudSynced
+    isCloudSynced,
+    isSyncing,
+    triggerManualSync
   } = useApp();
 
   const [isRoleDropdownOpen, setIsRoleDropdownOpen] = useState(false);
@@ -113,12 +115,16 @@ export default function Navbar() {
             </button>
           </div>
 
-          {/* Cloud Sync Status */}
+          {/* Interactive Cloud Sync Status Button */}
           {isCloudSynced && (
-            <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200/60 dark:border-emerald-800/60 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span>Cloud Synced</span>
-            </div>
+            <button
+              onClick={triggerManualSync}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 border border-emerald-200/60 dark:border-emerald-800/60 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold transition-all"
+              title="Real-Time Cross-Device Sync Active. Click to sync now."
+            >
+              <span className={`w-1.5 h-1.5 rounded-full bg-emerald-500 ${isSyncing ? 'animate-spin' : 'animate-pulse'}`}></span>
+              <span>{isSyncing ? 'Syncing...' : '🟢 Cloud Synced'}</span>
+            </button>
           )}
         </div>
 
