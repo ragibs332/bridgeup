@@ -533,42 +533,17 @@ export default function Chatbot() {
   };
 
   return (
-    <div className="fixed bottom-16 sm:bottom-6 left-3 sm:left-6 z-50">
-      {/* Floating Trigger & Greeting Bubble */}
+    <div className="fixed bottom-20 sm:bottom-6 right-4 sm:right-6 z-40">
+      {/* Clean Floating Trigger Button */}
       {!isOpen && (
-        <div className="relative flex items-center gap-3">
-          <button
-            onClick={() => setIsOpen(true)}
-            className="group relative flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-brand-teal-800 text-white shadow-2xl hover:scale-110 transition-all duration-300 border-2 border-brand-mint-400 hover:shadow-glow-mint"
-            aria-label="Open BridgeUp AI Assistant"
-            title="BridgeUp AI Chatbot Assistant (Bottom-Left)"
-          >
-            <span className="absolute -top-1 -right-1 flex h-4 w-4">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-mint-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-4 w-4 bg-brand-amber-500"></span>
-            </span>
-            <Bot className="w-6 h-6 sm:w-7 sm:h-7 text-brand-mint-300 group-hover:rotate-12 transition-transform duration-300" />
-          </button>
-
-          {showGreetingBubble && (
-            <div
-              onClick={() => setIsOpen(true)}
-              className="cursor-pointer bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-2xl shadow-xl border border-brand-teal-200/80 dark:border-slate-700 text-xs font-bold flex items-center gap-2 animate-bounce hover:scale-105 transition-transform max-w-[200px] sm:max-w-none"
-            >
-              <Sparkles className="w-4 h-4 text-brand-amber-500 flex-shrink-0" />
-              <span className="truncate">BridgeUp AI • Search NGOs</span>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowGreetingBubble(false);
-                }}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 ml-1"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
-        </div>
+        <button
+          onClick={() => setIsOpen(true)}
+          className="group flex items-center justify-center w-12 h-12 sm:w-13 sm:h-13 rounded-full bg-brand-teal-800 hover:bg-brand-teal-700 text-white shadow-xl hover:scale-105 transition-all border-2 border-brand-mint-400"
+          aria-label="Open AI Assistant"
+          title="BridgeUp AI Assistant"
+        >
+          <Bot className="w-5 h-5 sm:w-6 sm:h-6 text-brand-mint-300 group-hover:rotate-6 transition-transform" />
+        </button>
       )}
 
       {/* Chat Window */}

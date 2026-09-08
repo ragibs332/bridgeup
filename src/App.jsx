@@ -3,7 +3,6 @@ import { useApp } from './context/AppContext';
 import Navbar from './components/common/Navbar';
 import DrawerMenu from './components/common/DrawerMenu';
 import Chatbot from './components/common/Chatbot';
-import QuickRoleSwitch from './components/common/QuickRoleSwitch';
 import ToastContainer from './components/common/ToastContainer';
 import MobileBottomNav from './components/common/MobileBottomNav';
 import HomeLanding from './components/home/HomeLanding';
@@ -42,24 +41,24 @@ function MainContent() {
   } = useApp();
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col relative transition-colors duration-200">
-      {/* Ambient 3D Floating Geometry Atmosphere */}
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col relative transition-colors duration-200 selection:bg-brand-teal-500/20 selection:text-brand-teal-900">
+      {/* Soft Ambient Background */}
       <Ambient3DBackground />
 
-      {/* If Guest, render World-Class Professional Home & Landing Portal */}
+      {/* Guest Landing Portal */}
       {currentRole === 'guest' ? (
         <HomeLanding />
       ) : (
         <>
-          {/* Top Main Navbar with Left 3-Pin Pattern Trigger for All Roles */}
+          {/* Top Main Navbar with Integrated Role Switcher */}
           <Navbar />
 
-          {/* Unified 3-Pin Sliding Drawer Menu for User, NGO, and Admin */}
+          {/* Navigation Drawer */}
           <DrawerMenu />
 
-          {/* Main Content Area */}
+          {/* Main Content View */}
           <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 w-full relative z-10">
-            {/* User Content Routing */}
+            {/* User Role Routing */}
             {currentRole === 'user' && (
               <>
                 {activeUserTab === 'dashboard' && <UserDashboard />}
@@ -71,7 +70,7 @@ function MainContent() {
               </>
             )}
 
-            {/* NGO Content Routing */}
+            {/* NGO Role Routing */}
             {currentRole === 'ngo' && (
               <>
                 {activeNgoTab === 'dashboard' && <NgoDashboard />}
@@ -83,7 +82,7 @@ function MainContent() {
               </>
             )}
 
-            {/* Admin Content Routing */}
+            {/* Admin Role Routing */}
             {currentRole === 'admin' && (
               <>
                 {activeAdminTab === 'dashboard' && <AdminDashboard />}
@@ -98,13 +97,10 @@ function MainContent() {
         </>
       )}
 
-      {/* Dedicated Floating Chatbot Assistant in Bottom-Left Corner (Always Active on All Screens) */}
+      {/* Clean Floating Chatbot Assistant in Bottom-Right Corner */}
       <Chatbot />
 
-      {/* Demo Role Switcher Dock for Instant Presentation */}
-      <QuickRoleSwitch />
-
-      {/* Mobile-First Responsive Bottom Navigation */}
+      {/* Mobile-First Bottom Navigation (for quick role & section tabs on phones) */}
       <MobileBottomNav />
 
       {/* Toast Notifications */}
