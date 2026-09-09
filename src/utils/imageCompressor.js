@@ -4,7 +4,7 @@
  * This completely avoids browser/app LocalStorage QuotaExceededError crashes.
  */
 
-export async function compressImage(fileOrDataUrl, maxWidth = 800, maxHeight = 800, quality = 0.7) {
+export async function compressImage(fileOrDataUrl, maxWidth = 500, maxHeight = 500, quality = 0.65) {
   return new Promise((resolve) => {
     try {
       const img = new Image();

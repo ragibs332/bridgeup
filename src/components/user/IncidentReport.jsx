@@ -83,8 +83,8 @@ export default function IncidentReport() {
 
     setIsCompressing(true);
     try {
-      // Compress image from 10MB down to ~40KB in canvas
-      const compressedDataUrl = await compressImage(file, 800, 800, 0.7);
+      // Compress image from 10MB down to lightweight ~15KB in canvas
+      const compressedDataUrl = await compressImage(file, 500, 500, 0.65);
       if (compressedDataUrl) {
         setFormData(prev => ({
           ...prev,
@@ -186,7 +186,7 @@ export default function IncidentReport() {
                 <span className="w-6 h-6 rounded-full bg-amber-500 text-white text-xs font-black flex items-center justify-center">1</span>
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white">Live Photo / Incident Evidence</h3>
               </div>
-              <span className="text-[11px] text-slate-400">Auto-compressed to ~40KB</span>
+              <span className="text-[11px] text-slate-400">Auto-compressed to ~15KB</span>
             </div>
 
             {/* Photo Action & Preview */}

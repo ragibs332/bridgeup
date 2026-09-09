@@ -14,7 +14,11 @@ import {
   fetchCatchUpEvents,
   broadcastCloudEvent,
   subscribeToCloudSync,
-  mergeEntities
+  subscribeToSyncStatus,
+  broadcastSyncRequest,
+  broadcastSyncResponse,
+  mergeEntities,
+  MY_DEVICE_ID
 } from '../services/cloudSync';
 
 const AppContext = createContext();
@@ -177,6 +181,12 @@ export const AppProvider = ({ children }) => {
     safeSetItem('bridgeup_disputes', disputes);
   }, [disputes]);
 
+  // Keep latest snapshot ref for instant peer sync replies without recreating callbacks
+  const stateRef = React.useRef({ incidents, registeredUsers, ngos, campaigns, requirements });
+  useEffect(() => {
+    stateRef.current = { incidents, registeredUsers, ngos, campaigns, requirements };
+  }, [incidents, registeredUsers, ngos, campaigns, requirements]);
+
   // Apply a remote cloud event to local state
   const handleCloudEvent = useCallback((event) => {
     if (!event || !event.type) return;
@@ -185,11 +195,38 @@ export const AppProvider = ({ children }) => {
     setLastSyncedAt(new Date());
 
     switch (event.type) {
+      case 'SYNC_REQUEST':
+        if (event.senderId && event.senderId !== MY_DEVICE_ID) {
+          broadcastSyncResponse(event.senderId, stateRef.current);
+        }
+        break;
+
+      case 'SYNC_SNAPSHOT':
+        if (event.payload) {
+          const { targetId, snapshot } = event.payload;
+          if (!targetId || targetId === MY_DEVICE_ID) {
+            const data = snapshot || event.payload;
+            if (data) {
+              if (Array.isArray(data.incidents) && data.incidents.length) {
+                setIncidents(prev => mergeEntities(prev, data.incidents));
+              }
+              if (Array.isArray(data.registeredUsers) && data.registeredUsers.length) {
+                setRegisteredUsers(prev => mergeEntities(prev, data.registeredUsers));
+              }
+              if (Array.isArray(data.ngos) && data.ngos.length) {
+                setNgos(prev => mergeEntities(prev, data.ngos));
+              }
+            }
+          }
+        }
+        break;
+
       case 'INCIDENT_REPORTED':
         if (event.payload && event.payload.id) {
           setIncidents(prev => {
             const exists = prev.some(i => i.id === event.payload.id);
             if (exists) return prev;
+            addToast('Live Incident Received 🚨', `"${event.payload.title}" reported by ${event.payload.reporterName || 'Citizen'}`, 'info');
             return [event.payload, ...prev];
           });
         }
@@ -216,6 +253,7 @@ export const AppProvider = ({ children }) => {
               return n;
             }));
           }
+          addToast('Incident Resolved ✅', `Case marked resolved by ${event.payload.assignedNgoName || 'NGO'}`, 'success');
         }
         break;
 
@@ -304,7 +342,7 @@ export const AppProvider = ({ children }) => {
       default:
         break;
     }
-  }, []);
+  }, [addToast]);
 
   // Manual Sync trigger to fetch catch-up events
   const triggerManualSync = useCallback(async () => {
@@ -323,25 +361,40 @@ export const AppProvider = ({ children }) => {
     }
   }, [handleCloudEvent]);
 
-  // Connect WebSocket & subscribe to real-time events
+  // Connect WebSocket & subscribe to real-time events + peer sync handshake
   useEffect(() => {
     initRealtimeWebSocket();
     triggerManualSync();
+
+    // Broadcast a peer sync request so any active device shares its state
+    broadcastSyncRequest();
 
     const unsubscribe = subscribeToCloudSync((event) => {
       handleCloudEvent(event);
     });
 
+    const unsubscribeStatus = subscribeToSyncStatus((connected) => {
+      setIsCloudSynced(connected);
+    });
+
     const onVisibilityChange = () => {
       if (!document.hidden) {
         triggerManualSync();
+        broadcastSyncRequest();
       }
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
     window.addEventListener('focus', onVisibilityChange);
 
+    // Periodic heartbeat poll every 25 seconds as backup
+    const heartbeatInterval = setInterval(() => {
+      triggerManualSync();
+    }, 25000);
+
     return () => {
       unsubscribe();
+      unsubscribeStatus();
+      clearInterval(heartbeatInterval);
       document.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener('focus', onVisibilityChange);
     };

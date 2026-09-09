@@ -8,11 +8,15 @@
 const CLOUD_SYNC_CHANNEL = 'bridgeup_live_hub_v1';
 const WS_ENDPOINT = `wss://ntfy.sh/${CLOUD_SYNC_CHANNEL}/ws`;
 const HTTP_PUBLISH_URL = `https://ntfy.sh/${CLOUD_SYNC_CHANNEL}`;
-const HTTP_POLL_URL = `https://ntfy.sh/${CLOUD_SYNC_CHANNEL}/json?poll=1&since=24h`;
+const HTTP_POLL_URL = `https://ntfy.sh/${CLOUD_SYNC_CHANNEL}/json?poll=1&since=all`;
 
 // Generate or get unique persistent device ID to ignore self-echoed messages
 export function getDeviceId() {
-  let devId = localStorage.getItem('bridgeup_device_id');
+  let devId = null;
+  try {
+    devId = localStorage.getItem('bridgeup_device_id');
+  } catch (e) {}
+
   if (!devId) {
     devId = 'dev_' + Math.random().toString(36).substring(2, 10) + '_' + Date.now().toString(36);
     try {
@@ -22,7 +26,7 @@ export function getDeviceId() {
   return devId;
 }
 
-const MY_DEVICE_ID = getDeviceId();
+export const MY_DEVICE_ID = getDeviceId();
 
 // Local BroadcastChannel for instant same-machine multi-tab sync
 let broadcastChannel = null;
@@ -35,15 +39,37 @@ try {
 }
 
 let syncListeners = [];
+let statusListeners = [];
 let activeWebSocket = null;
 let reconnectTimer = null;
 let isConnected = false;
+
+export function isCloudConnected() {
+  return isConnected;
+}
 
 export function subscribeToCloudSync(callback) {
   syncListeners.push(callback);
   return () => {
     syncListeners = syncListeners.filter(cb => cb !== callback);
   };
+}
+
+export function subscribeToSyncStatus(callback) {
+  statusListeners.push(callback);
+  callback(isConnected);
+  return () => {
+    statusListeners = statusListeners.filter(cb => cb !== callback);
+  };
+}
+
+function updateConnectionStatus(connected) {
+  if (isConnected !== connected) {
+    isConnected = connected;
+    statusListeners.forEach(cb => {
+      try { cb(isConnected); } catch (e) {}
+    });
+  }
 }
 
 function notifySyncListeners(event) {
@@ -75,6 +101,44 @@ function handleIncomingEvent(eventData) {
 }
 
 /**
+ * Safely decode a message frame (either inline JSON or file attachment)
+ */
+export async function decodeMessageFrame(frame) {
+  if (!frame || frame.event !== 'message') return null;
+
+  // 1. If payload was > 4KB, ntfy creates a file attachment
+  if (frame.attachment && frame.attachment.url) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      const res = await fetch(frame.attachment.url, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn('Could not fetch attachment:', err?.message);
+    }
+    return null;
+  }
+
+  // 2. If payload was inline JSON string in frame.message
+  if (frame.message) {
+    // If ntfy sent attachment notice string without attachment object
+    if (typeof frame.message === 'string' && frame.message.startsWith('You received a file:')) {
+      return null;
+    }
+    try {
+      return JSON.parse(frame.message);
+    } catch (err) {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+/**
  * Connect to persistent WebSocket stream
  */
 export function initRealtimeWebSocket() {
@@ -88,7 +152,7 @@ export function initRealtimeWebSocket() {
     const ws = new WebSocket(WS_ENDPOINT);
 
     ws.onopen = () => {
-      isConnected = true;
+      updateConnectionStatus(true);
       if (reconnectTimer) {
         clearTimeout(reconnectTimer);
         reconnectTimer = null;
@@ -96,12 +160,14 @@ export function initRealtimeWebSocket() {
       console.log('BridgeUp Realtime: Connected to global cloud synchronization socket.');
     };
 
-    ws.onmessage = (e) => {
+    ws.onmessage = async (e) => {
       try {
         const frame = JSON.parse(e.data);
-        if (frame.event === 'message' && frame.message) {
-          const eventData = JSON.parse(frame.message);
-          handleIncomingEvent(eventData);
+        if (frame.event === 'message') {
+          const eventData = await decodeMessageFrame(frame);
+          if (eventData) {
+            handleIncomingEvent(eventData);
+          }
         }
       } catch (err) {
         // Non-json message or heartbeat frame
@@ -109,7 +175,7 @@ export function initRealtimeWebSocket() {
     };
 
     ws.onclose = () => {
-      isConnected = false;
+      updateConnectionStatus(false);
       // Auto-reconnect after 3 seconds
       if (!reconnectTimer) {
         reconnectTimer = setTimeout(() => {
@@ -130,12 +196,12 @@ export function initRealtimeWebSocket() {
 }
 
 /**
- * Fetch past 24h cloud catch-up events on startup
+ * Fetch past cloud catch-up events on startup
  */
 export async function fetchCatchUpEvents() {
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 6000);
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
 
     const res = await fetch(HTTP_POLL_URL, {
       method: 'GET',
@@ -145,21 +211,26 @@ export async function fetchCatchUpEvents() {
 
     if (res.ok) {
       const text = await res.text();
-      const events = text
+      const frames = text
         .split('\n')
         .filter(Boolean)
         .map(l => {
           try {
-            const obj = JSON.parse(l);
-            if (obj.event === 'message' && obj.message) {
-              return JSON.parse(obj.message);
-            }
-          } catch (e) {}
-          return null;
+            return JSON.parse(l);
+          } catch (e) {
+            return null;
+          }
         })
-        .filter(Boolean);
+        .filter(f => f && f.event === 'message');
 
-      return events;
+      // Decode frames concurrently (handles both inline messages and downloadable file attachments)
+      const decodedEvents = await Promise.all(frames.map(decodeMessageFrame));
+      const validEvents = decodedEvents.filter(e => e && typeof e === 'object' && e.type);
+
+      // Sort chronologically by timestamp
+      validEvents.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+
+      return validEvents;
     }
   } catch (err) {
     console.debug('Catch-up sync notice (offline or connecting):', err?.message);
@@ -187,21 +258,51 @@ export async function broadcastCloudEvent(type, payload) {
 
   // 2. Publish to Global Real-time Cloud Hub
   try {
-    await fetch(HTTP_PUBLISH_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Title': type
-      },
-      body: JSON.stringify(eventData)
-    });
+    const serialized = JSON.stringify(eventData);
+
+    if (serialized.length < 3500) {
+      // Lightweight message: publish inline to avoid attachment overhead
+      await fetch('https://ntfy.sh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic: CLOUD_SYNC_CHANNEL,
+          message: serialized,
+          title: type
+        })
+      });
+    } else {
+      // Large message with photo: post to topic URL so ntfy creates downloadable attachment
+      await fetch(HTTP_PUBLISH_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Title': type
+        },
+        body: serialized
+      });
+    }
   } catch (err) {
-    console.warn('Cloud broadcast error (will retry or use local cache):', err);
+    console.warn('Cloud broadcast notice:', err);
   }
 }
 
 /**
- * Helper to merge entities by ID
+ * Send Peer Sync Request to get the latest snapshot from any active device
+ */
+export function broadcastSyncRequest() {
+  broadcastCloudEvent('SYNC_REQUEST', { requestedAt: Date.now() });
+}
+
+/**
+ * Reply with State Snapshot to a specific target device
+ */
+export function broadcastSyncResponse(targetId, snapshot) {
+  broadcastCloudEvent('SYNC_SNAPSHOT', { targetId, snapshot });
+}
+
+/**
+ * Helper to merge entities by ID and latest timestamp
  */
 export function mergeEntities(localList = [], remoteList = []) {
   if (!Array.isArray(remoteList) || !remoteList.length) return localList;
@@ -218,8 +319,8 @@ export function mergeEntities(localList = [], remoteList = []) {
       if (!existing) {
         map.set(item.id, item);
       } else {
-        const remoteTime = item.updatedAt || item.timestamp || 0;
-        const localTime = existing.updatedAt || existing.timestamp || 0;
+        const remoteTime = new Date(item.updatedAt || item.resolvedAt || item.createdAt || 0).getTime() || item.timestamp || 0;
+        const localTime = new Date(existing.updatedAt || existing.resolvedAt || existing.createdAt || 0).getTime() || existing.timestamp || 0;
         if (remoteTime >= localTime) {
           map.set(item.id, { ...existing, ...item });
         }
