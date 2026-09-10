@@ -309,24 +309,33 @@ export function mergeEntities(localList = [], remoteList = []) {
   if (!Array.isArray(localList) || !localList.length) return remoteList;
 
   const map = new Map();
-  localList.forEach(item => {
+  // Remote items take precedence
+  remoteList.forEach(item => {
     if (item && item.id) map.set(item.id, item);
   });
 
-  remoteList.forEach(item => {
+  localList.forEach(item => {
     if (item && item.id) {
       const existing = map.get(item.id);
       if (!existing) {
         map.set(item.id, item);
       } else {
-        const remoteTime = new Date(item.updatedAt || item.resolvedAt || item.createdAt || 0).getTime() || item.timestamp || 0;
-        const localTime = new Date(existing.updatedAt || existing.resolvedAt || existing.createdAt || 0).getTime() || existing.timestamp || 0;
-        if (remoteTime >= localTime) {
+        const localTime = new Date(item.updatedAt || item.resolvedAt || item.createdAt || 0).getTime() || item.timestamp || 0;
+        const remoteTime = new Date(existing.updatedAt || existing.resolvedAt || existing.createdAt || 0).getTime() || existing.timestamp || 0;
+        if (localTime > remoteTime) {
           map.set(item.id, { ...existing, ...item });
         }
       }
     }
   });
 
-  return Array.from(map.values());
+  const merged = Array.from(map.values());
+  // Sort with newest items at the top
+  merged.sort((a, b) => {
+    const timeA = new Date(a.createdAt || a.created_at || a.verificationDate || 0).getTime() || 0;
+    const timeB = new Date(b.createdAt || b.created_at || b.verificationDate || 0).getTime() || 0;
+    return timeB - timeA;
+  });
+
+  return merged;
 }

@@ -1,16 +1,25 @@
 import { createClient } from '@supabase/supabase-js';
 
+// Helper to strip accidental /rest/v1 or trailing slashes from Supabase project URLs
+export function cleanSupabaseUrl(rawUrl) {
+  if (!rawUrl) return '';
+  let cleaned = rawUrl.trim();
+  cleaned = cleaned.replace(/\/rest\/v1\/?$/i, '');
+  cleaned = cleaned.replace(/\/+$/, '');
+  return cleaned;
+}
+
 // Read from Environment variables or user-configured LocalStorage
 export function getSupabaseCredentials() {
-  const envUrl = import.meta.env.VITE_SUPABASE_URL;
-  const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  const envUrl = cleanSupabaseUrl(import.meta.env.VITE_SUPABASE_URL);
+  const envKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
 
   let localUrl = null;
   let localKey = null;
 
   try {
-    localUrl = localStorage.getItem('bridgeup_supabase_url');
-    localKey = localStorage.getItem('bridgeup_supabase_anon_key');
+    localUrl = cleanSupabaseUrl(localStorage.getItem('bridgeup_supabase_url'));
+    localKey = (localStorage.getItem('bridgeup_supabase_anon_key') || '').trim();
   } catch (e) {}
 
   const url = localUrl || envUrl || '';
@@ -27,18 +36,21 @@ export function resetSupabaseClient() {
 
 export function saveSupabaseCredentials(url, key) {
   try {
-    if (url) localStorage.setItem('bridgeup_supabase_url', url.trim());
+    const cleaned = cleanSupabaseUrl(url);
+    if (cleaned) localStorage.setItem('bridgeup_supabase_url', cleaned);
     if (key) localStorage.setItem('bridgeup_supabase_anon_key', key.trim());
     resetSupabaseClient();
   } catch (e) {}
 }
 
 export async function testSupabaseConnection(testUrl, testKey) {
-  if (!testUrl || !testKey) {
+  const url = cleanSupabaseUrl(testUrl);
+  const key = (testKey || '').trim();
+  if (!url || !key) {
     return { success: false, error: 'URL and Key cannot be empty.' };
   }
   try {
-    const testClient = createClient(testUrl.trim(), testKey.trim(), {
+    const testClient = createClient(url, key, {
       auth: { persistSession: false }
     });
 
