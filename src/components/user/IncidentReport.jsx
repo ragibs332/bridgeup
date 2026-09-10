@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { compressImage } from '../../utils/imageCompressor';
+import LiveCameraModal from './LiveCameraModal';
+import IncidentOverviewModal from './IncidentOverviewModal';
 import {
   AlertOctagon,
   Camera,
@@ -15,17 +17,25 @@ import {
   Check,
   Radio,
   Loader2,
-  Trash2
+  Trash2,
+  FolderOpen,
+  Eye,
+  Building2,
+  ArrowRight
 } from 'lucide-react';
 
 export default function IncidentReport() {
-  const { reportIncident, incidents, currentUser, isCloudSynced } = useApp();
+  const { reportIncident, incidents, currentUser, isCloudSynced, addToast } = useApp();
 
   const [activeTab, setActiveTab] = useState('report'); // 'report' | 'tracker'
   const [filterStatus, setFilterStatus] = useState('all');
   const [isLocating, setIsLocating] = useState(false);
   const [isCompressing, setIsCompressing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Modals
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [selectedIncidentForOverview, setSelectedIncidentForOverview] = useState(null);
 
   const [formData, setFormData] = useState({
     title: '',
@@ -60,7 +70,7 @@ export default function IncidentReport() {
         const lng = position.coords.longitude.toFixed(4);
         setFormData(prev => ({
           ...prev,
-          location: `Pinned GPS (${lat}° N, ${lng}° E) - Accurate to within ${Math.round(position.coords.accuracy || 10)}m`
+          location: `Pinned GPS (${lat}° N, ${lng}° E) - Accurate within ${Math.round(position.coords.accuracy || 10)}m`
         }));
         setIsLocating(false);
       },
@@ -76,35 +86,50 @@ export default function IncidentReport() {
     );
   };
 
-  // Safe Camera / Gallery Upload with Instant Client-Side Compression
-  const handlePhotoUpload = async (e) => {
+  // Safe Gallery / File Upload with Client-Side Compression
+  const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setIsCompressing(true);
     try {
-      // Compress image from 10MB down to lightweight ~15KB in canvas
-      const compressedDataUrl = await compressImage(file, 500, 500, 0.65);
+      const compressedDataUrl = await compressImage(file, 600, 600, 0.70);
       if (compressedDataUrl) {
         setFormData(prev => ({
           ...prev,
           photo: compressedDataUrl
         }));
+        addToast('Photo Uploaded', 'Image compressed and attached successfully.', 'success');
       }
     } catch (err) {
       console.error('Error compressing image:', err);
+      addToast('Upload Note', 'Used standard photo processing.', 'info');
     } finally {
       setIsCompressing(false);
     }
   };
 
+  // Live Camera Frame Capture Callback
+  const handleLivePhotoCaptured = (photoDataUrl) => {
+    if (photoDataUrl) {
+      setFormData(prev => ({
+        ...prev,
+        photo: photoDataUrl
+      }));
+      addToast('Live Photo Captured! 📸', 'Camera frame attached to report.', 'success');
+    }
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!formData.title.trim() || !formData.description.trim()) return;
+    if (!formData.title.trim() || !formData.description.trim()) {
+      addToast('Missing Fields', 'Please provide a title and description.', 'warning');
+      return;
+    }
 
     setIsSubmitting(true);
     try {
-      reportIncident(formData);
+      const created = reportIncident(formData);
       setFormData({
         title: '',
         category: 'Child Distress & Labor',
@@ -114,8 +139,12 @@ export default function IncidentReport() {
         photo: 'https://images.unsplash.com/photo-1543269865-cbf427effbad?w=600&auto=format&fit=crop&q=80'
       });
       setActiveTab('tracker');
+      if (created) {
+        setSelectedIncidentForOverview(created);
+      }
     } catch (err) {
       console.error('Failed to submit incident report:', err);
+      addToast('Submission Error', 'Please check your connection and try again.', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -123,6 +152,7 @@ export default function IncidentReport() {
 
   const filteredIncidents = incidents.filter(i => {
     if (filterStatus === 'all') return true;
+    if (filterStatus === 'Assigned') return i.status === 'In Progress' || Boolean(i.assignedNgoName);
     return i.status === filterStatus;
   });
 
@@ -136,7 +166,7 @@ export default function IncidentReport() {
           </div>
           <div>
             <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
-              Incident Reporting
+              Incident Reporting & Tracking
             </h1>
             <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2">
               <span>Direct dispatch to verified local NGOs</span>
@@ -150,7 +180,7 @@ export default function IncidentReport() {
           </div>
         </div>
 
-        {/* Simplified View Switcher */}
+        {/* View Switcher */}
         <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl w-full sm:w-auto">
           <button
             onClick={() => setActiveTab('report')}
@@ -170,33 +200,33 @@ export default function IncidentReport() {
                 : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
             }`}
           >
-            Track Reports ({incidents.length})
+            Incident Tracking ({incidents.length})
           </button>
         </div>
       </div>
 
       {activeTab === 'report' ? (
-        /* Simplified 3-Step Incident Form */
+        /* 3-Step Incident Form */
         <form onSubmit={handleSubmit} className="space-y-6">
           
-          {/* STEP 1: Photo Evidence */}
+          {/* STEP 1: Live Photo & Evidence */}
           <div className="bg-white dark:bg-slate-900 rounded-3xl p-5 sm:p-7 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="w-6 h-6 rounded-full bg-amber-500 text-white text-xs font-black flex items-center justify-center">1</span>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">Live Photo / Incident Evidence</h3>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">Live Camera Photo / Incident Evidence</h3>
               </div>
-              <span className="text-[11px] text-slate-400">Auto-compressed to ~15KB</span>
+              <span className="text-[11px] text-slate-400">Compressed & Web/App Ready</span>
             </div>
 
             {/* Photo Action & Preview */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
               {/* Image Preview */}
-              <div className="relative rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-800 border-2 border-dashed border-slate-300 dark:border-slate-700 h-44 flex items-center justify-center">
+              <div className="relative rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-800 border-2 border-dashed border-slate-300 dark:border-slate-700 h-48 flex items-center justify-center">
                 {isCompressing ? (
                   <div className="text-center space-y-2 p-4">
                     <Loader2 className="w-8 h-8 text-amber-500 animate-spin mx-auto" />
-                    <p className="text-xs font-bold text-slate-600 dark:text-slate-300">Compressing & Optimizing Photo...</p>
+                    <p className="text-xs font-bold text-slate-600 dark:text-slate-300">Compressing & Optimizing...</p>
                   </div>
                 ) : formData.photo ? (
                   <>
@@ -204,6 +234,9 @@ export default function IncidentReport() {
                       src={formData.photo}
                       alt="Incident Evidence"
                       className="w-full h-full object-cover"
+                      onError={(e) => {
+                        e.currentTarget.src = 'https://images.unsplash.com/photo-1543269865-cbf427effbad?w=600&auto=format&fit=crop&q=80';
+                      }}
                     />
                     <div className="absolute top-2 right-2 flex gap-1">
                       <span className="px-2 py-1 rounded-lg bg-black/60 text-white text-[10px] font-bold">
@@ -219,24 +252,36 @@ export default function IncidentReport() {
                 )}
               </div>
 
-              {/* Upload Controls & Presets */}
+              {/* Upload Controls */}
               <div className="space-y-3">
-                <label className="cursor-pointer w-full py-3.5 px-4 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2">
-                  <Camera className="w-4 h-4" />
-                  <span>{isCompressing ? 'Processing Image...' : '📸 Open Camera / Choose File'}</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    onChange={handlePhotoUpload}
-                    disabled={isCompressing}
-                    className="hidden"
-                  />
-                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {/* In-App Live Camera Stream Button */}
+                  <button
+                    type="button"
+                    onClick={() => setIsCameraOpen(true)}
+                    className="py-3 px-3 rounded-2xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs shadow-md transition-all flex items-center justify-center gap-1.5 active:scale-95"
+                  >
+                    <Camera className="w-4 h-4" />
+                    <span>📸 Live Camera</span>
+                  </button>
+
+                  {/* Device / Gallery File Picker */}
+                  <label className="cursor-pointer py-3 px-3 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs border border-slate-200 dark:border-slate-700 transition-all flex items-center justify-center gap-1.5 text-center">
+                    <FolderOpen className="w-4 h-4 text-amber-500" />
+                    <span>📁 Gallery / Files</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileUpload}
+                      disabled={isCompressing}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
 
                 <div className="pt-2">
                   <span className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
-                    Or select standard demo photo:
+                    Or select demo emergency photo:
                   </span>
                   <div className="grid grid-cols-2 gap-2">
                     {samplePhotos.map((p, idx) => (
@@ -376,7 +421,7 @@ export default function IncidentReport() {
           <button
             type="submit"
             disabled={isSubmitting || isCompressing}
-            className="w-full py-4 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-black text-sm shadow-xl hover:shadow-2xl transition-all flex items-center justify-center gap-2"
+            className="w-full py-4 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-sm shadow-xl hover:shadow-2xl transition-all flex items-center justify-center gap-2 active:scale-[0.99]"
           >
             {isSubmitting ? (
               <>
@@ -392,94 +437,194 @@ export default function IncidentReport() {
           </button>
         </form>
       ) : (
-        /* Tracker View */
-        <div className="space-y-4">
+        /* INCIDENT TRACKING VIEW */
+        <div className="space-y-5">
           {/* Filter Bar */}
           <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
             <div className="flex items-center gap-2">
               <Filter className="w-4 h-4 text-slate-500" />
-              <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Filter Status:</span>
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Filter Incident Status:</span>
             </div>
 
-            <div className="flex gap-1.5">
-              {['all', 'Reported', 'In Progress', 'Resolved'].map(status => (
+            <div className="flex gap-1.5 flex-wrap">
+              {[
+                { key: 'all', label: 'All Cases' },
+                { key: 'Reported', label: '1. Reported' },
+                { key: 'Assigned', label: '2. Assigned / In Progress' },
+                { key: 'Resolved', label: '3. Solved & Closed' }
+              ].map(item => (
                 <button
-                  key={status}
-                  onClick={() => setFilterStatus(status)}
+                  key={item.key}
+                  onClick={() => setFilterStatus(item.key)}
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                    filterStatus === status
-                      ? 'bg-amber-500 text-white shadow-sm'
+                    filterStatus === item.key
+                      ? 'bg-amber-500 text-slate-950 shadow-sm'
                       : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
                   }`}
                 >
-                  {status === 'all' ? 'All Incidents' : status}
+                  {item.label}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Incidents Cards Feed */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filteredIncidents.map(inc => (
-              <div
-                key={inc.id}
-                className="bg-white dark:bg-slate-900 rounded-3xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-all flex flex-col justify-between space-y-3"
+          {/* Incidents List */}
+          {filteredIncidents.length === 0 ? (
+            <div className="bg-white dark:bg-slate-900 rounded-3xl p-12 text-center border border-slate-200 dark:border-slate-800 space-y-3">
+              <AlertOctagon className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto" />
+              <h3 className="text-base font-bold text-slate-700 dark:text-slate-300">No Incidents Found</h3>
+              <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                There are no incidents matching this filter. Switch filters or file a new distress report.
+              </p>
+              <button
+                type="button"
+                onClick={() => setActiveTab('report')}
+                className="px-4 py-2 rounded-xl bg-amber-500 text-slate-950 text-xs font-bold"
               >
-                <div>
-                  <div className="relative rounded-2xl overflow-hidden mb-3 bg-slate-950">
-                    <img src={inc.photo} alt={inc.title} className="w-full h-40 object-cover" />
-                    <div className="absolute top-2.5 left-2.5 flex gap-1.5">
-                      <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-md ${
-                        inc.status === 'Resolved'
-                          ? 'bg-emerald-600 text-white'
-                          : inc.status === 'In Progress'
-                          ? 'bg-amber-500 text-white'
-                          : 'bg-red-600 text-white'
-                      }`}>
-                        ● {inc.status.toUpperCase()}
-                      </span>
-                      <span className="text-[10px] bg-black/60 backdrop-blur-sm text-white px-2 py-0.5 rounded-full font-bold">
-                        {inc.category}
-                      </span>
-                    </div>
-                  </div>
+                + File Incident Report
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {filteredIncidents.map(inc => (
+                <div
+                  key={inc.id}
+                  className="bg-white dark:bg-slate-900 rounded-3xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-all flex flex-col justify-between space-y-4"
+                >
+                  <div>
+                    {/* Image Header with Status Overlays */}
+                    <div className="relative rounded-2xl overflow-hidden mb-3 bg-slate-950 aspect-video">
+                      <img
+                        src={inc.photo || 'https://images.unsplash.com/photo-1543269865-cbf427effbad?w=600&auto=format&fit=crop&q=80'}
+                        alt={inc.title}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          e.currentTarget.src = 'https://images.unsplash.com/photo-1543269865-cbf427effbad?w=600&auto=format&fit=crop&q=80';
+                        }}
+                      />
+                      
+                      {/* Status Badges */}
+                      <div className="absolute top-2.5 left-2.5 flex gap-1.5 flex-wrap">
+                        <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-md ${
+                          inc.status === 'Resolved'
+                            ? 'bg-emerald-600 text-white'
+                            : inc.status === 'In Progress' || inc.assignedNgoName
+                            ? 'bg-amber-500 text-slate-950'
+                            : 'bg-red-600 text-white'
+                        }`}>
+                          ● {inc.status.toUpperCase()}
+                        </span>
+                        <span className="text-[10px] bg-black/60 backdrop-blur-sm text-white px-2 py-0.5 rounded-full font-bold">
+                          {inc.category}
+                        </span>
+                      </div>
 
-                  <h3 className="font-bold text-sm text-slate-900 dark:text-white mb-1 line-clamp-1">
-                    {inc.title}
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1 mb-2">
-                    <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                    <span className="truncate">{inc.location}</span>
-                  </p>
-                  <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-2 leading-relaxed">
-                    {inc.description}
-                  </p>
-                </div>
-
-                {/* Resolution proof if solved */}
-                {inc.status === 'Resolved' && (
-                  <div className="p-3 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/50 space-y-1.5 text-xs text-emerald-900 dark:text-emerald-200">
-                    <div className="flex items-center justify-between font-bold">
-                      <span className="flex items-center gap-1">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                        Resolved by: {inc.assignedNgoName}
-                      </span>
+                      {/* Severity Pill */}
+                      <div className="absolute bottom-2.5 right-2.5">
+                        <span className="text-[10px] bg-black/70 backdrop-blur-sm text-amber-300 px-2 py-0.5 rounded-lg font-bold">
+                          {inc.severity} Priority
+                        </span>
+                      </div>
                     </div>
-                    <p className="text-[11px] text-emerald-800 dark:text-emerald-300">
-                      "{inc.resolutionNotes}"
+
+                    {/* Title and Location */}
+                    <h3 className="font-bold text-sm text-slate-900 dark:text-white mb-1 line-clamp-1">
+                      {inc.title}
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1 mb-2">
+                      <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                      <span className="truncate">{inc.location}</span>
                     </p>
-                  </div>
-                )}
+                    <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-2 leading-relaxed">
+                      {inc.description}
+                    </p>
 
-                <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
-                  <span>Reported by: <strong>{inc.reporterName || 'Concerned Citizen'}</strong></span>
-                  <span>{inc.createdAt ? new Date(inc.createdAt).toLocaleDateString() : 'Today'}</span>
+                    {/* Step Progression Bar */}
+                    <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+                      <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 mb-1.5">
+                        <span className={inc.status ? 'text-amber-500' : ''}>1. Reported</span>
+                        <span className={inc.assignedNgoName ? 'text-amber-500' : ''}>2. Assigned</span>
+                        <span className={inc.status === 'Resolved' ? 'text-emerald-500' : ''}>3. Resolved</span>
+                      </div>
+                      <div className="w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden flex">
+                        <div className="bg-amber-500 h-full w-1/3"></div>
+                        <div className={`h-full w-1/3 ${inc.assignedNgoName ? 'bg-amber-500' : 'bg-transparent'}`}></div>
+                        <div className={`h-full w-1/3 ${inc.status === 'Resolved' ? 'bg-emerald-500' : 'bg-transparent'}`}></div>
+                      </div>
+                    </div>
+
+                    {/* Assignment & Resolution Highlight */}
+                    {inc.status === 'Resolved' ? (
+                      <div className="mt-3 p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/50 flex items-start gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-emerald-900 dark:text-emerald-300 truncate">
+                            Resolved by {inc.assignedNgoName || 'Verified NGO'}
+                          </p>
+                          {inc.resolutionNotes && (
+                            <p className="text-[11px] text-emerald-800 dark:text-emerald-400 line-clamp-1 italic">
+                              "{inc.resolutionNotes}"
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ) : inc.assignedNgoName ? (
+                      <div className="mt-3 p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 flex items-center gap-2">
+                        <Building2 className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-amber-900 dark:text-amber-300 truncate">
+                            Assigned to: {inc.assignedNgoName}
+                          </p>
+                          <p className="text-[10px] text-amber-700 dark:text-amber-400">
+                            Rescue team active & dispatched
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-3 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          Awaiting NGO acceptance & assignment
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Actions & Overview Trigger */}
+                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+                    <span className="text-[11px] text-slate-400 truncate">
+                      By: {inc.reporterName || 'Citizen'}
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedIncidentForOverview(inc)}
+                      className="px-3.5 py-1.5 rounded-xl bg-slate-900 dark:bg-slate-100 hover:bg-amber-500 dark:hover:bg-amber-400 text-white dark:text-slate-900 hover:text-slate-950 text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>Incident Overview &rarr;</span>
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
+
+      {/* Live Camera Viewfinder Modal */}
+      <LiveCameraModal
+        isOpen={isCameraOpen}
+        onClose={() => setIsCameraOpen(false)}
+        onCapture={handleLivePhotoCaptured}
+      />
+
+      {/* Incident Overview & Timeline Modal */}
+      <IncidentOverviewModal
+        incident={selectedIncidentForOverview}
+        isOpen={Boolean(selectedIncidentForOverview)}
+        onClose={() => setSelectedIncidentForOverview(null)}
+      />
     </div>
   );
 }

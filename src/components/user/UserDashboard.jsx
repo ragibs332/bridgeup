@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import IncidentOverviewModal from './IncidentOverviewModal';
 import {
   AlertOctagon,
   Heart,
@@ -16,10 +17,12 @@ import {
   FileText,
   Calendar,
   PhoneCall,
-  Plus
+  Plus,
+  Eye
 } from 'lucide-react';
 
 export default function UserDashboard() {
+  const [selectedIncidentForModal, setSelectedIncidentForModal] = useState(null);
   const {
     currentUser,
     setActiveUserTab,
@@ -138,11 +141,15 @@ export default function UserDashboard() {
               {incidents.slice(0, 3).map(inc => (
                 <div
                   key={inc.id}
-                  className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 flex flex-col sm:flex-row gap-3 items-start sm:items-center"
+                  onClick={() => setSelectedIncidentForModal(inc)}
+                  className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 flex flex-col sm:flex-row gap-3 items-start sm:items-center hover:shadow-md cursor-pointer transition-all group"
                 >
                   <img
-                    src={inc.photo}
+                    src={inc.photo || 'https://images.unsplash.com/photo-1543269865-cbf427effbad?w=600&auto=format&fit=crop&q=80'}
                     alt={inc.title}
+                    onError={(e) => {
+                      e.currentTarget.src = 'https://images.unsplash.com/photo-1543269865-cbf427effbad?w=600&auto=format&fit=crop&q=80';
+                    }}
                     className="w-full sm:w-20 h-20 rounded-xl object-cover flex-shrink-0 bg-slate-900"
                   />
                   <div className="flex-1 min-w-0 space-y-1">
@@ -161,7 +168,7 @@ export default function UserDashboard() {
                       </span>
                     </div>
 
-                    <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white truncate">
+                    <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white truncate group-hover:text-amber-500 transition-colors">
                       {inc.title}
                     </h4>
 
@@ -181,6 +188,18 @@ export default function UserDashboard() {
                       </div>
                     )}
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedIncidentForModal(inc);
+                    }}
+                    className="px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-700 hover:bg-amber-500 hover:text-slate-950 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all border border-slate-200 dark:border-slate-600 flex items-center gap-1 sm:self-center self-end"
+                  >
+                    <Eye className="w-3 h-3" />
+                    <span>Overview</span>
+                  </button>
                 </div>
               ))}
             </div>
@@ -322,6 +341,13 @@ export default function UserDashboard() {
 
         </div>
       </div>
+
+      {/* Incident Overview & Lifecycle Timeline Modal */}
+      <IncidentOverviewModal
+        incident={selectedIncidentForModal}
+        isOpen={Boolean(selectedIncidentForModal)}
+        onClose={() => setSelectedIncidentForModal(null)}
+      />
     </div>
   );
 }

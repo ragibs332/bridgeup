@@ -7,6 +7,7 @@ import ToastContainer from './components/common/ToastContainer';
 import MobileBottomNav from './components/common/MobileBottomNav';
 import HomeLanding from './components/home/HomeLanding';
 import Ambient3DBackground from './components/3d/Ambient3DBackground';
+import ErrorBoundary from './components/common/ErrorBoundary';
 
 // User Views
 import UserDashboard from './components/user/UserDashboard';
@@ -110,5 +111,9 @@ function MainContent() {
 }
 
 export default function App() {
-  return <MainContent />;
+  return (
+    <ErrorBoundary>
+      <MainContent />
+    </ErrorBoundary>
+  );
 }
