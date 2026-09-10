@@ -15,7 +15,8 @@ import {
 import { useApp } from '../../context/AppContext';
 import {
   getSupabaseCredentials,
-  saveSupabaseCredentials
+  saveSupabaseCredentials,
+  testSupabaseConnection
 } from '../../services/supabase';
 
 const SQL_SCHEMA_STRING = `-- =======================================================
@@ -124,22 +125,45 @@ export default function CloudDatabaseModal({ isOpen, onClose }) {
 
   if (!isOpen) return null;
 
-  const handleSave = (e) => {
+  const [isTesting, setIsTesting] = useState(false);
+  const [testStatus, setTestStatus] = useState(null); // null | 'success' | 'error'
+  const [testMessage, setTestMessage] = useState('');
+
+  const handleSave = async (e) => {
     e.preventDefault();
     if (!url.trim() || !key.trim()) {
-      addToast('Missing Details', 'Please provide both your Supabase URL and Anon Key.', 'error');
+      addToast('Missing Details', 'Please provide both your Supabase URL and Key.', 'error');
       return;
     }
 
-    saveSupabaseCredentials(url.trim(), key.trim());
-    setIsSaved(true);
-    addToast('Supabase Connected! 🚀', 'Connecting to your cloud PostgreSQL database and pulling records...', 'success');
+    setIsTesting(true);
+    setTestStatus(null);
+    setTestMessage('');
 
-    setTimeout(() => {
-      triggerManualSync();
-      setIsSaved(false);
-      onClose();
-    }, 1000);
+    const res = await testSupabaseConnection(url.trim(), key.trim());
+    setIsTesting(false);
+
+    if (res.success) {
+      setTestStatus('success');
+      setTestMessage('✓ Verified! Connected to "public.incidents" table in PostgreSQL.');
+      saveSupabaseCredentials(url.trim(), key.trim());
+      addToast('Supabase Connected! 🚀', 'Connected to cloud PostgreSQL and synchronized.', 'success');
+      setIsSaved(true);
+
+      setTimeout(() => {
+        triggerManualSync();
+        setIsSaved(false);
+        onClose();
+      }, 1000);
+    } else {
+      setTestStatus('error');
+      let msg = res.error || 'Connection failed';
+      if (msg.includes('relation "public.incidents" does not exist')) {
+        msg = 'Tables not created yet! Click "Copy 1-Click SQL Schema", paste into Supabase SQL Editor, and click Run.';
+      }
+      setTestMessage(msg);
+      addToast('Connection Failed', msg, 'error');
+    }
   };
 
   const handleCopySql = () => {
@@ -247,6 +271,24 @@ export default function CloudDatabaseModal({ isOpen, onClose }) {
               />
             </div>
 
+            {testStatus && (
+              <div className={`p-3.5 rounded-2xl text-xs font-semibold flex items-start gap-2.5 border ${
+                testStatus === 'success'
+                  ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800'
+                  : 'bg-red-50 dark:bg-red-950/40 text-red-900 dark:text-red-300 border-red-300 dark:border-red-800'
+              }`}>
+                {testStatus === 'success' ? (
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
+                ) : (
+                  <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                )}
+                <div>
+                  <p className="font-bold">{testStatus === 'success' ? 'Connected to PostgreSQL!' : 'Connection Error'}</p>
+                  <p className="text-[11px] opacity-90 mt-0.5 leading-relaxed">{testMessage}</p>
+                </div>
+              </div>
+            )}
+
             <div className="flex gap-2">
               <button
                 type="button"
@@ -268,11 +310,20 @@ export default function CloudDatabaseModal({ isOpen, onClose }) {
 
               <button
                 type="submit"
-                disabled={isSaved}
+                disabled={isTesting || isSaved}
                 className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2"
               >
-                <CheckCircle2 className="w-4 h-4" />
-                <span>{isSaved ? 'Saving...' : 'Save & Connect'}</span>
+                {isTesting ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Verifying...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>{isSaved ? 'Saving...' : 'Save & Connect'}</span>
+                  </>
+                )}
               </button>
             </div>
           </form>

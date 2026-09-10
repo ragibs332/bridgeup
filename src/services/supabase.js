@@ -1,4 +1,4 @@
-﻿import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 
 // Read from Environment variables or user-configured LocalStorage
 export function getSupabaseCredentials() {
@@ -21,11 +21,35 @@ export function getSupabaseCredentials() {
   return { url, key, isConfigured };
 }
 
+export function resetSupabaseClient() {
+  supabaseInstance = null;
+}
+
 export function saveSupabaseCredentials(url, key) {
   try {
     if (url) localStorage.setItem('bridgeup_supabase_url', url.trim());
     if (key) localStorage.setItem('bridgeup_supabase_anon_key', key.trim());
+    resetSupabaseClient();
   } catch (e) {}
+}
+
+export async function testSupabaseConnection(testUrl, testKey) {
+  if (!testUrl || !testKey) {
+    return { success: false, error: 'URL and Key cannot be empty.' };
+  }
+  try {
+    const testClient = createClient(testUrl.trim(), testKey.trim(), {
+      auth: { persistSession: false }
+    });
+
+    const { data, error } = await testClient.from('incidents').select('id').limit(1);
+    if (error) {
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err?.message || 'Network request failed' };
+  }
 }
 
 let supabaseInstance = null;
