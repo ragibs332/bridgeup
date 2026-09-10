@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import Logo from './Logo';
 import ThemeToggle from './ThemeToggle';
+import CloudDatabaseModal from './CloudDatabaseModal';
 import {
   Menu,
   X,
@@ -12,7 +13,8 @@ import {
   LogOut,
   ChevronDown,
   RefreshCw,
-  Layers
+  Layers,
+  Database
 } from 'lucide-react';
 
 export default function Navbar() {
@@ -35,7 +37,9 @@ export default function Navbar() {
     setActiveAdminTab,
     isCloudSynced,
     isSyncing,
-    triggerManualSync
+    triggerManualSync,
+    isDbModalOpen,
+    setIsDbModalOpen
   } = useApp();
 
   const [isRoleDropdownOpen, setIsRoleDropdownOpen] = useState(false);
@@ -115,17 +119,16 @@ export default function Navbar() {
             </button>
           </div>
 
-          {/* Interactive Cloud Sync Status Button */}
-          {isCloudSynced && (
-            <button
-              onClick={triggerManualSync}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 border border-emerald-200/60 dark:border-emerald-800/60 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold transition-all"
-              title="Real-Time Cross-Device Sync Active. Click to sync now."
-            >
-              <span className={`w-1.5 h-1.5 rounded-full bg-emerald-500 ${isSyncing ? 'animate-spin' : 'animate-pulse'}`}></span>
-              <span>{isSyncing ? 'Syncing...' : '🟢 Cloud Synced'}</span>
-            </button>
-          )}
+          {/* Interactive Cloud Sync & Database Settings Button */}
+          <button
+            onClick={() => setIsDbModalOpen(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 border border-emerald-200/60 dark:border-emerald-800/60 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold transition-all shadow-sm"
+            title="Cloud Database Sync. Click to configure Supabase or force sync."
+          >
+            <Database className="w-3 h-3 text-emerald-600" />
+            <span className={`w-1.5 h-1.5 rounded-full bg-emerald-500 ${isSyncing ? 'animate-spin' : 'animate-pulse'}`}></span>
+            <span>{isSyncing ? 'Syncing...' : '🟢 Cloud DB'}</span>
+          </button>
         </div>
 
         {/* Right Section: Theme Toggle, Notifications, Account & Logout */}
@@ -205,6 +208,11 @@ export default function Navbar() {
           )}
         </div>
       </div>
+
+      <CloudDatabaseModal
+        isOpen={isDbModalOpen}
+        onClose={() => setIsDbModalOpen(false)}
+      />
     </header>
   );
 }

@@ -20,6 +20,17 @@ import {
   mergeEntities,
   MY_DEVICE_ID
 } from '../services/cloudSync';
+import {
+  fetchCloudIncidents,
+  insertCloudIncident,
+  updateCloudIncident,
+  fetchCloudUsers,
+  insertCloudUser,
+  fetchCloudNgos,
+  updateCloudNgo,
+  subscribeToSupabaseRealtime,
+  getSupabaseCredentials
+} from '../services/supabase';
 
 const AppContext = createContext();
 
@@ -37,6 +48,7 @@ export const AppProvider = ({ children }) => {
   const [isCloudSynced, setIsCloudSynced] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState(() => new Date());
+  const [isDbModalOpen, setIsDbModalOpen] = useState(false);
 
   useEffect(() => {
     if (theme === 'dark') {
@@ -345,9 +357,27 @@ export const AppProvider = ({ children }) => {
   }, [addToast]);
 
   // Manual Sync trigger to fetch catch-up events
+  // Manual Sync trigger to fetch catch-up events from Supabase and Cloud Broker
   const triggerManualSync = useCallback(async () => {
     setIsSyncing(true);
     try {
+      // 1. If Supabase is configured, pull directly from cloud PostgreSQL
+      const cloudIncs = await fetchCloudIncidents();
+      if (Array.isArray(cloudIncs) && cloudIncs.length > 0) {
+        setIncidents(prev => mergeEntities(prev, cloudIncs));
+      }
+
+      const cloudUsers = await fetchCloudUsers();
+      if (Array.isArray(cloudUsers) && cloudUsers.length > 0) {
+        setRegisteredUsers(prev => mergeEntities(prev, cloudUsers));
+      }
+
+      const cloudNgos = await fetchCloudNgos();
+      if (Array.isArray(cloudNgos) && cloudNgos.length > 0) {
+        setNgos(prev => mergeEntities(prev, cloudNgos));
+      }
+
+      // 2. Also fetch past cloud catch-up events
       const pastEvents = await fetchCatchUpEvents();
       if (Array.isArray(pastEvents) && pastEvents.length > 0) {
         pastEvents.forEach(handleCloudEvent);
@@ -361,7 +391,7 @@ export const AppProvider = ({ children }) => {
     }
   }, [handleCloudEvent]);
 
-  // Connect WebSocket & subscribe to real-time events + peer sync handshake
+  // Connect WebSocket & subscribe to real-time events + peer sync handshake + Supabase
   useEffect(() => {
     initRealtimeWebSocket();
     triggerManualSync();
@@ -376,6 +406,32 @@ export const AppProvider = ({ children }) => {
     const unsubscribeStatus = subscribeToSyncStatus((connected) => {
       setIsCloudSynced(connected);
     });
+
+    // Supabase Real-Time Postgres Change Listener
+    const unsubSupabase = subscribeToSupabaseRealtime(
+      (newOrUpdatedIncident) => {
+        setIncidents(prev => {
+          const exists = prev.some(i => i.id === newOrUpdatedIncident.id);
+          if (exists) {
+            return prev.map(i => i.id === newOrUpdatedIncident.id ? { ...i, ...newOrUpdatedIncident } : i);
+          }
+          addToast('Live Incident Received 🚨', `"${newOrUpdatedIncident.title}" reported by ${newOrUpdatedIncident.reporterName || 'Citizen'}`, 'info');
+          return [newOrUpdatedIncident, ...prev];
+        });
+      },
+      (newOrUpdatedUser) => {
+        setRegisteredUsers(prev => {
+          const exists = prev.some(u => u.id === newOrUpdatedUser.id || u.username === newOrUpdatedUser.username);
+          if (exists) {
+            return prev.map(u => (u.id === newOrUpdatedUser.id || u.username === newOrUpdatedUser.username) ? { ...u, ...newOrUpdatedUser } : u);
+          }
+          return [newOrUpdatedUser, ...prev];
+        });
+      },
+      (newOrUpdatedNgo) => {
+        setNgos(prev => prev.map(n => n.id === newOrUpdatedNgo.id ? { ...n, ...newOrUpdatedNgo } : n));
+      }
+    );
 
     const onVisibilityChange = () => {
       if (!document.hidden) {
@@ -394,11 +450,12 @@ export const AppProvider = ({ children }) => {
     return () => {
       unsubscribe();
       unsubscribeStatus();
+      unsubSupabase();
       clearInterval(heartbeatInterval);
       document.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener('focus', onVisibilityChange);
     };
-  }, [handleCloudEvent, triggerManualSync]);
+  }, [handleCloudEvent, triggerManualSync, addToast]);
 
   // Real Authentication Engine
   const registerUser = ({ username, email, password, name, phone, location }) => {
@@ -434,6 +491,9 @@ export const AppProvider = ({ children }) => {
     setCurrentRole('user');
     setActiveUserTab('dashboard');
 
+    // Save directly to cloud PostgreSQL
+    insertCloudUser(newUser);
+
     // Broadcast globally via real-time cloud WebSocket
     broadcastCloudEvent('USER_REGISTERED', newUser);
 
@@ -441,11 +501,24 @@ export const AppProvider = ({ children }) => {
     return { success: true, user: newUser };
   };
 
-  const authenticateUser = ({ identifier, password }) => {
+  const authenticateUser = async ({ identifier, password }) => {
     const cleanId = identifier.trim().toLowerCase();
-    const user = registeredUsers.find(
+    let user = registeredUsers.find(
       u => (u.username && u.username.toLowerCase() === cleanId) || (u.email && u.email.toLowerCase() === cleanId)
     );
+
+    if (!user) {
+      // Check cloud database directly in case user registered on another device
+      try {
+        const cloudUsers = await fetchCloudUsers();
+        if (Array.isArray(cloudUsers) && cloudUsers.length > 0) {
+          setRegisteredUsers(prev => mergeEntities(prev, cloudUsers));
+          user = cloudUsers.find(
+            u => (u.username && u.username.toLowerCase() === cleanId) || (u.email && u.email.toLowerCase() === cleanId)
+          );
+        }
+      } catch (err) {}
+    }
 
     if (!user) {
       addToast('Authentication Failed', 'No account found with this username or email.', 'warning');
@@ -533,6 +606,9 @@ export const AppProvider = ({ children }) => {
 
     setIncidents(prev => [newIncident, ...prev]);
 
+    // Save directly to cloud PostgreSQL database
+    insertCloudIncident(newIncident);
+
     // Instant Global Push to ALL connected devices worldwide
     broadcastCloudEvent('INCIDENT_REPORTED', newIncident);
 
@@ -549,6 +625,7 @@ export const AppProvider = ({ children }) => {
     };
 
     setIncidents(prev => prev.map(inc => (inc.id === incidentId ? { ...inc, ...updateData } : inc)));
+    updateCloudIncident(incidentId, updateData);
     broadcastCloudEvent('INCIDENT_ASSIGNED', updateData);
     addToast('Incident Assigned', `Incident has been assigned to ${ngo.name}`, 'info');
   };
@@ -587,6 +664,9 @@ export const AppProvider = ({ children }) => {
       }
     }));
 
+    // Update cloud PostgreSQL
+    updateCloudIncident(incidentId, updateData);
+
     // Broadcast resolution globally
     broadcastCloudEvent('INCIDENT_RESOLVED', updateData);
 
@@ -601,6 +681,7 @@ export const AppProvider = ({ children }) => {
     };
 
     setIncidents(prev => prev.map(inc => (inc.id === incidentId ? { ...inc, ...updateData } : inc)));
+    updateCloudIncident(incidentId, updateData);
     broadcastCloudEvent('INCIDENT_MODERATED', updateData);
     addToast('Incident Moderated', `Action "${action}" recorded by Admin.`, 'info');
   };
@@ -1000,7 +1081,9 @@ export const AppProvider = ({ children }) => {
         isCloudSynced,
         isSyncing,
         lastSyncedAt,
-        triggerManualSync
+        triggerManualSync,
+        isDbModalOpen,
+        setIsDbModalOpen
       }}
     >
       {children}
