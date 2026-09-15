@@ -114,6 +114,9 @@ export default function CloudDatabaseModal({ isOpen, onClose }) {
   const [key, setKey] = useState('');
   const [isCopied, setIsCopied] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
+  const [testStatus, setTestStatus] = useState(null); // null | 'success' | 'error'
+  const [testMessage, setTestMessage] = useState('');
 
   useEffect(() => {
     if (isOpen) {
@@ -124,10 +127,6 @@ export default function CloudDatabaseModal({ isOpen, onClose }) {
   }, [isOpen]);
 
   if (!isOpen) return null;
-
-  const [isTesting, setIsTesting] = useState(false);
-  const [testStatus, setTestStatus] = useState(null); // null | 'success' | 'error'
-  const [testMessage, setTestMessage] = useState('');
 
   const handleSave = async (e) => {
     e.preventDefault();
