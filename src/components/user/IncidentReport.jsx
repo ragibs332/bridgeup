@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { compressImage } from '../../utils/imageCompressor';
+import { getLiveLocation } from '../../services/locationService';
 import LiveCameraModal from './LiveCameraModal';
 import IncidentOverviewModal from './IncidentOverviewModal';
 import {
@@ -21,7 +22,9 @@ import {
   FolderOpen,
   Eye,
   Building2,
-  ArrowRight
+  ArrowRight,
+  Navigation,
+  Compass
 } from 'lucide-react';
 
 export default function IncidentReport() {
@@ -30,6 +33,8 @@ export default function IncidentReport() {
   const [activeTab, setActiveTab] = useState('report'); // 'report' | 'tracker'
   const [filterStatus, setFilterStatus] = useState('all');
   const [isLocating, setIsLocating] = useState(false);
+  const [gpsStatus, setGpsStatus] = useState('');
+  const [locationMeta, setLocationMeta] = useState(null); // { accuracy, source, warning }
   const [isCompressing, setIsCompressing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -42,6 +47,7 @@ export default function IncidentReport() {
     category: 'Child Distress & Labor',
     severity: 'High',
     location: '',
+    coordinates: null,
     description: '',
     photo: 'https://images.unsplash.com/photo-1543269865-cbf427effbad?w=600&auto=format&fit=crop&q=80'
   });
@@ -53,37 +59,55 @@ export default function IncidentReport() {
     { label: 'Injured Animal Rescue', url: 'https://images.unsplash.com/photo-1543466835-00a7907e9de1?w=600&auto=format&fit=crop&q=80' }
   ];
 
-  // 1-Tap GPS Auto-Detection with high accuracy and fallback
-  const handleUseGps = () => {
-    if (!navigator.geolocation) {
-      setFormData(prev => ({
-        ...prev,
-        location: 'Connaught Place, New Delhi (GPS: 28.6328° N, 77.2197° E)'
-      }));
-      return;
-    }
-
+  // Robust Live GPS with Native Android / Capacitor & Web Multi-tier Fallback
+  const handleUseGps = async () => {
     setIsLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const lat = position.coords.latitude.toFixed(4);
-        const lng = position.coords.longitude.toFixed(4);
+    setGpsStatus('Acquiring live location...');
+    try {
+      const res = await getLiveLocation((msg) => setGpsStatus(msg));
+
+      if (res.success) {
         setFormData(prev => ({
           ...prev,
-          location: `Pinned GPS (${lat}° N, ${lng}° E) - Accurate within ${Math.round(position.coords.accuracy || 10)}m`
+          location: res.address,
+          coordinates: res.coordinates
         }));
-        setIsLocating(false);
-      },
-      (error) => {
-        console.warn('Geolocation fallback:', error);
-        setFormData(prev => ({
-          ...prev,
-          location: 'Sector 17 / Vashi Plaza, Navi Mumbai (GPS: 19.0760° N, 72.8777° E)'
-        }));
-        setIsLocating(false);
-      },
-      { timeout: 8000, enableHighAccuracy: true }
-    );
+        setLocationMeta({
+          accuracy: res.accuracy,
+          source: res.source,
+          warning: res.warning
+        });
+
+        if (res.warning) {
+          addToast('Location Updated 📍', res.warning, 'info');
+        } else {
+          addToast('Live GPS Locked! 🎯', res.address, 'success');
+        }
+      } else {
+        addToast('GPS Notice ⚠️', res.message || 'Could not lock GPS. You can type an address or pick a city preset.', 'warning');
+      }
+    } catch (err) {
+      console.error('GPS error:', err);
+      addToast('GPS Error', 'Please verify location permissions or enter address manually.', 'error');
+    } finally {
+      setIsLocating(false);
+      setGpsStatus('');
+    }
+  };
+
+  // 1-Tap Quick City Presets (for instant demo/testing)
+  const handleSelectCityPreset = (cityName, lat, lng) => {
+    const address = `${cityName} (${lat.toFixed(4)}° N, ${lng.toFixed(4)}° E)`;
+    setFormData(prev => ({
+      ...prev,
+      location: address,
+      coordinates: { lat, lng }
+    }));
+    setLocationMeta({
+      accuracy: 50,
+      source: 'preset'
+    });
+    addToast('City Selected 📍', address, 'info');
   };
 
   // Safe Gallery / File Upload with Client-Side Compression
@@ -129,22 +153,27 @@ export default function IncidentReport() {
 
     setIsSubmitting(true);
     try {
-      const created = reportIncident(formData);
+      const created = reportIncident({
+        ...formData,
+        coordinates: formData.coordinates || { lat: 28.6139, lng: 77.2090 }
+      });
       setFormData({
         title: '',
         category: 'Child Distress & Labor',
         severity: 'High',
         location: '',
+        coordinates: null,
         description: '',
         photo: 'https://images.unsplash.com/photo-1543269865-cbf427effbad?w=600&auto=format&fit=crop&q=80'
       });
+      setLocationMeta(null);
       setActiveTab('tracker');
       if (created) {
         setSelectedIncidentForOverview(created);
       }
     } catch (err) {
       console.error('Failed to submit incident report:', err);
-      addToast('Submission Error', 'Please check your connection and try again.', 'error');
+      addToast('Error', 'Could not broadcast report. Please retry.', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -307,22 +336,70 @@ export default function IncidentReport() {
 
           {/* STEP 2: Location & Coordinates */}
           <div className="bg-white dark:bg-slate-900 rounded-3xl p-5 sm:p-7 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <span className="w-6 h-6 rounded-full bg-amber-500 text-white text-xs font-black flex items-center justify-center">2</span>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">Location & Landmarks</h3>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">Location & Coordinates</h3>
+                  <p className="text-[10px] text-slate-400">Live GPS chip lock with reverse street address</p>
+                </div>
               </div>
 
               <button
                 type="button"
                 onClick={handleUseGps}
                 disabled={isLocating}
-                className="text-xs font-bold text-teal-700 dark:text-teal-300 hover:text-teal-800 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-50 dark:bg-teal-950/50 border border-teal-200 dark:border-teal-800 transition-all"
+                className={`text-xs font-bold flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all shadow-sm ${
+                  isLocating
+                    ? 'bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border border-amber-300 animate-pulse'
+                    : 'bg-teal-600 hover:bg-teal-700 text-white'
+                }`}
               >
-                <MapPin className={`w-3.5 h-3.5 ${isLocating ? 'animate-spin' : ''}`} />
-                <span>{isLocating ? 'Locating...' : '📍 1-Tap Auto GPS'}</span>
+                {isLocating ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Locating...</span>
+                  </>
+                ) : (
+                  <>
+                    <MapPin className="w-3.5 h-3.5" />
+                    <span>📍 1-Tap Live GPS</span>
+                  </>
+                )}
               </button>
             </div>
+
+            {/* Real-time locating status banner */}
+            {isLocating && gpsStatus && (
+              <div className="p-3 rounded-2xl bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 flex items-center gap-2 text-xs text-teal-800 dark:text-teal-300 animate-in fade-in">
+                <Loader2 className="w-4 h-4 animate-spin text-teal-600 flex-shrink-0" />
+                <span className="font-medium">{gpsStatus}</span>
+              </div>
+            )}
+
+            {/* Active Location Precision Pill */}
+            {locationMeta && (
+              <div className="flex items-center gap-2 flex-wrap text-[11px]">
+                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full font-semibold ${
+                  locationMeta.source === 'gps'
+                    ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300'
+                    : locationMeta.source === 'network'
+                    ? 'bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 border border-blue-300'
+                    : 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300'
+                }`}>
+                  {locationMeta.source === 'gps' && '🛰️ Pinpoint Sat GPS'}
+                  {locationMeta.source === 'network' && '📡 Cellular/Wi-Fi Lock'}
+                  {locationMeta.source === 'ip' && '🌐 Network IP'}
+                  {locationMeta.source === 'preset' && '🏙️ City Preset'}
+                  {locationMeta.accuracy && ` (±${locationMeta.accuracy}m)`}
+                </span>
+                {locationMeta.warning && (
+                  <span className="text-[10px] text-amber-600 dark:text-amber-400 italic">
+                    {locationMeta.warning}
+                  </span>
+                )}
+              </div>
+            )}
 
             <input
               type="text"
@@ -332,6 +409,33 @@ export default function IncidentReport() {
               onChange={(e) => setFormData({ ...formData, location: e.target.value })}
               className="w-full px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 focus:outline-none"
             />
+
+            {/* Quick 1-Tap City Presets (for instant demo/offline testing) */}
+            <div className="pt-1">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Quick Select Demo City:</span>
+                <span className="text-[10px] text-slate-400">1-Tap fill</span>
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {[
+                  { name: 'Delhi NCR', lat: 28.6139, lng: 77.2090 },
+                  { name: 'Mumbai', lat: 19.0760, lng: 72.8777 },
+                  { name: 'Navi Mumbai', lat: 19.0330, lng: 73.0297 },
+                  { name: 'Bengaluru', lat: 12.9716, lng: 77.5946 },
+                  { name: 'Kolkata', lat: 22.5726, lng: 88.3639 },
+                  { name: 'Hyderabad', lat: 17.3850, lng: 78.4867 }
+                ].map((city) => (
+                  <button
+                    key={city.name}
+                    type="button"
+                    onClick={() => handleSelectCityPreset(city.name, city.lat, city.lng)}
+                    className="text-[10px] font-medium px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-amber-50 dark:hover:bg-amber-950/40 hover:text-amber-700 dark:hover:text-amber-300 border border-slate-200 dark:border-slate-700 transition-colors"
+                  >
+                    📍 {city.name}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
           {/* STEP 3: Incident Details */}
