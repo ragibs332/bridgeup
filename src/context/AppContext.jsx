@@ -24,6 +24,7 @@ import {
   fetchCloudIncidents,
   insertCloudIncident,
   updateCloudIncident,
+  deleteCloudIncident,
   fetchCloudUsers,
   insertCloudUser,
   fetchCloudNgos,
@@ -246,8 +247,15 @@ export const AppProvider = ({ children }) => {
 
       case 'INCIDENT_ASSIGNED':
       case 'INCIDENT_MODERATED':
+      case 'INCIDENT_UPDATED':
         if (event.payload && event.payload.id) {
           setIncidents(prev => prev.map(inc => (inc.id === event.payload.id ? { ...inc, ...event.payload } : inc)));
+        }
+        break;
+
+      case 'INCIDENT_DELETED':
+        if (event.payload && event.payload.id) {
+          setIncidents(prev => prev.filter(inc => inc.id !== event.payload.id));
         }
         break;
 
@@ -673,6 +681,21 @@ export const AppProvider = ({ children }) => {
     addToast('Incident Marked Resolved! 🎉', 'Resolution proof and notes have been synced across all devices.', 'success');
   };
 
+  const deleteIncident = (incidentId) => {
+    setIncidents(prev => prev.filter(inc => inc.id !== incidentId));
+    deleteCloudIncident(incidentId);
+    broadcastCloudEvent('INCIDENT_DELETED', { id: incidentId });
+    addToast('Incident Removed 🗑️', 'The report and its photo have been removed.', 'info');
+  };
+
+  const removeIncidentPhoto = (incidentId) => {
+    const defaultPhoto = 'https://images.unsplash.com/photo-1543269865-cbf427effbad?w=600&auto=format&fit=crop&q=80';
+    setIncidents(prev => prev.map(inc => (inc.id === incidentId ? { ...inc, photo: defaultPhoto } : inc)));
+    updateCloudIncident(incidentId, { photo: defaultPhoto });
+    broadcastCloudEvent('INCIDENT_UPDATED', { id: incidentId, photo: defaultPhoto });
+    addToast('Photo Removed 🖼️', 'The photo has been reset to the standard emergency image.', 'success');
+  };
+
   const moderateIncident = (incidentId, action, note) => {
     const updateData = {
       id: incidentId,
@@ -1050,6 +1073,8 @@ export const AppProvider = ({ children }) => {
         assignIncidentToNgo,
         resolveIncident,
         moderateIncident,
+        deleteIncident,
+        removeIncidentPhoto,
 
         adoptions,
         addAdoptionListing,

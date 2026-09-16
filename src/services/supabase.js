@@ -177,6 +177,8 @@ export async function updateCloudIncident(id, fields) {
   try {
     const updates = {};
     if (fields.status !== undefined) updates.status = fields.status;
+    if (fields.photo !== undefined) updates.photo = fields.photo;
+    if (fields.title !== undefined) updates.title = fields.title;
     if (fields.assignedNgoId !== undefined) updates.assigned_ngo_id = fields.assignedNgoId;
     if (fields.assignedNgoName !== undefined) updates.assigned_ngo_name = fields.assignedNgoName;
     if (fields.resolutionNotes !== undefined) updates.resolution_notes = fields.resolutionNotes;
@@ -192,6 +194,23 @@ export async function updateCloudIncident(id, fields) {
     return true;
   } catch (err) {
     console.warn('Supabase update exception:', err);
+    return false;
+  }
+}
+
+export async function deleteCloudIncident(id) {
+  const client = getSupabaseClient();
+  if (!client) return false;
+
+  try {
+    const { error } = await client.from('incidents').delete().eq('id', id);
+    if (error) {
+      console.warn('Supabase delete incident error:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('Supabase delete exception:', err);
     return false;
   }
 }

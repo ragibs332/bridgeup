@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 
 export default function IncidentReport() {
-  const { reportIncident, incidents, currentUser, isCloudSynced, addToast } = useApp();
+  const { reportIncident, incidents, currentUser, isCloudSynced, addToast, deleteIncident } = useApp();
 
   const [activeTab, setActiveTab] = useState('report'); // 'report' | 'tracker'
   const [filterStatus, setFilterStatus] = useState('all');
@@ -700,14 +700,30 @@ export default function IncidentReport() {
                       By: {inc.reporterName || 'Citizen'}
                     </span>
 
-                    <button
-                      type="button"
-                      onClick={() => setSelectedIncidentForOverview(inc)}
-                      className="px-3.5 py-1.5 rounded-xl bg-slate-900 dark:bg-slate-100 hover:bg-amber-500 dark:hover:bg-amber-400 text-white dark:text-slate-900 hover:text-slate-950 text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>Incident Overview &rarr;</span>
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (window.confirm(`Permanently delete incident "${inc.title}"?`)) {
+                            deleteIncident(inc.id);
+                          }
+                        }}
+                        className="p-1.5 rounded-xl text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+                        title="Delete incident"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setSelectedIncidentForOverview(inc)}
+                        className="px-3.5 py-1.5 rounded-xl bg-slate-900 dark:bg-slate-100 hover:bg-amber-500 dark:hover:bg-amber-400 text-white dark:text-slate-900 hover:text-slate-950 text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Incident Overview &rarr;</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
