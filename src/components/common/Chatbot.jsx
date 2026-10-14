@@ -561,7 +561,7 @@ export default function Chatbot() {
                   <h3 className="font-bold text-xs sm:text-sm tracking-wide">BridgeUp AI Assistant</h3>
                   <span className="w-2 h-2 rounded-full bg-brand-mint-400 animate-pulse"></span>
                 </div>
-                <p className="text-[10px] text-brand-mint-200">Gemini 3.5 AI • Voice & Vision Active</p>
+                <p className="text-[10px] text-brand-mint-200">Gemini Flash AI • Voice & Vision Active</p>
               </div>
             </div>
 
@@ -609,14 +609,14 @@ export default function Chatbot() {
                   Google Gemini API Key Setup
                 </span>
                 <span className="text-[9px] bg-brand-mint-500/20 text-brand-mint-300 px-2 py-0.5 rounded-full font-bold">
-                  Gemini 3.5 Flash Active
+                  Gemini Flash Multi-Model
                 </span>
               </div>
 
               <div className="flex gap-1.5">
                 <input
                   type="text"
-                  placeholder="Paste your Gemini API key here"
+                  placeholder="Paste your Gemini API key here (AIzaSy...)"
                   value={geminiApiKey}
                   onChange={(e) => setGeminiApiKey(e.target.value)}
                   className="flex-1 px-3 py-1.5 rounded-xl bg-slate-900 border border-brand-teal-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-brand-mint-400"
@@ -633,27 +633,49 @@ export default function Chatbot() {
                     }
 
                     setKeyTestState({ testing: true, status: 'testing', message: 'Contacting Google Gemini API...' });
-                    try {
-                      const testRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent`, {
-                        method: 'POST',
-                        headers: {
-                          'Content-Type': 'application/json',
-                          'x-goog-api-key': trimmed
-                        },
-                        body: JSON.stringify({
-                          contents: [{ parts: [{ text: 'Respond with: "BridgeUp Connected"' }] }]
-                        })
-                      });
-                      const testData = await testRes.json();
-                      if (testRes.ok && testData.candidates?.[0]?.content?.parts?.[0]?.text) {
-                        const reply = testData.candidates[0].content.parts[0].text.trim();
-                        setKeyTestState({ testing: false, status: 'success', message: `Connected! AI Reply: "${reply}"` });
-                      } else {
-                        const errMsg = testData.error?.message || JSON.stringify(testData);
-                        setKeyTestState({ testing: false, status: 'error', message: errMsg });
+                    const modelsToTest = [
+                      'gemini-2.5-flash',
+                      'gemini-2.0-flash',
+                      'gemini-1.5-flash',
+                      'gemini-1.5-flash-latest',
+                      'gemini-2.5-flash-lite',
+                      'gemini-flash-latest',
+                      'gemini-3.5-flash'
+                    ];
+
+                    let lastError = null;
+                    let connectedModel = null;
+                    let replyText = null;
+
+                    for (const m of modelsToTest) {
+                      try {
+                        const testRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`, {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                            'x-goog-api-key': trimmed
+                          },
+                          body: JSON.stringify({
+                            contents: [{ parts: [{ text: 'Respond with: "BridgeUp Connected"' }] }]
+                          })
+                        });
+                        const testData = await testRes.json();
+                        if (testRes.ok && testData.candidates?.[0]?.content?.parts?.[0]?.text) {
+                          connectedModel = m;
+                          replyText = testData.candidates[0].content.parts[0].text.trim();
+                          break;
+                        } else if (testData.error?.message) {
+                          lastError = testData.error.message;
+                        }
+                      } catch (err) {
+                        lastError = err.message;
                       }
-                    } catch (err) {
-                      setKeyTestState({ testing: false, status: 'error', message: `Network error: ${err.message}` });
+                    }
+
+                    if (connectedModel && replyText) {
+                      setKeyTestState({ testing: false, status: 'success', message: `Connected! (${connectedModel}): "${replyText}"` });
+                    } else {
+                      setKeyTestState({ testing: false, status: 'error', message: lastError || 'Could not connect. Please verify your API key.' });
                     }
                   }}
                   className="px-3 py-1.5 rounded-xl bg-brand-mint-500 hover:bg-brand-mint-400 disabled:opacity-50 text-slate-950 font-black text-xs transition-colors flex items-center gap-1"
