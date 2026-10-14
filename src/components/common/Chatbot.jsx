@@ -55,7 +55,7 @@ export default function Chatbot() {
   const [inputMessage, setInputMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [showKeyModal, setShowKeyModal] = useState(false);
-  const [geminiApiKey, setGeminiApiKey] = useState(() => localStorage.getItem('bridgeup_gemini_key') || '');
+  const [geminiApiKey, setGeminiApiKey] = useState(() => localStorage.getItem('bridgeup_gemini_key') || import.meta.env.VITE_GEMINI_API_KEY || '');
   const [keyTestState, setKeyTestState] = useState({ testing: false, status: null, message: '' });
 
   // 1. Voice Speech-to-Text State
@@ -634,13 +634,14 @@ export default function Chatbot() {
 
                     setKeyTestState({ testing: true, status: 'testing', message: 'Contacting Google Gemini API...' });
                     const modelsToTest = [
-                      'gemini-2.5-flash',
-                      'gemini-2.0-flash',
-                      'gemini-1.5-flash',
-                      'gemini-1.5-flash-latest',
-                      'gemini-2.5-flash-lite',
+                      'gemini-3.5-flash-lite',
+                      'gemini-flash-lite-latest',
+                      'gemini-3.8-flash',
+                      'gemini-3.7-flash',
+                      'gemini-3.6-flash',
+                      'gemini-3.5-flash',
                       'gemini-flash-latest',
-                      'gemini-3.5-flash'
+                      'gemini-3.1-flash-lite'
                     ];
 
                     let lastError = null;
